@@ -92,23 +92,35 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               Find sequential numbers in a shared shuffled grid. First player to spot each target gets the point!
             </p>
 
-            {/* Quick Play Action Buttons */}
-            <div className="grid grid-cols-2 gap-2 mt-4">
+            {/* Primary Game Mode Selection */}
+            <div className="space-y-2 mt-4">
+              {/* Single Player Button */}
               <button
-                onClick={onOpenCreateModal}
-                className="py-3 px-3 rounded-xl font-display font-black text-xs sm:text-sm text-black bg-gradient-to-r from-cyan-400 to-purple-400 hover:opacity-95 shadow-md flex items-center justify-center gap-1.5 tap-effect"
+                onClick={onOpenPractice}
+                className="w-full py-3.5 px-4 rounded-xl font-display font-black text-sm text-black bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:opacity-95 shadow-lg flex items-center justify-center gap-2 tap-effect"
               >
-                <Plus className="w-4 h-4 stroke-[3]" />
-                Create Match
+                <Target className="w-4 h-4 stroke-[2.5]" />
+                Single Player (Practice Alone)
               </button>
 
-              <button
-                onClick={() => onOpenJoinModal()}
-                className="py-3 px-3 rounded-xl font-display font-black text-xs sm:text-sm text-white bg-gray-800/80 hover:bg-gray-800 border border-gray-700 hover:border-cyan-400 flex items-center justify-center gap-1.5 tap-effect"
-              >
-                <LogIn className="w-4 h-4 text-cyan-400" />
-                Join Room
-              </button>
+              {/* Multiplayer Buttons */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={onOpenCreateModal}
+                  className="py-3 px-3 rounded-xl font-display font-black text-xs sm:text-sm text-white bg-gradient-to-r from-cyan-600 to-purple-600 hover:opacity-95 shadow-md flex items-center justify-center gap-1.5 tap-effect"
+                >
+                  <Plus className="w-4 h-4 stroke-[3]" />
+                  Create Room
+                </button>
+
+                <button
+                  onClick={() => onOpenJoinModal()}
+                  className="py-3 px-3 rounded-xl font-display font-black text-xs sm:text-sm text-gray-200 bg-gray-800/80 hover:bg-gray-800 border border-gray-700 hover:border-cyan-400 flex items-center justify-center gap-1.5 tap-effect"
+                >
+                  <LogIn className="w-4 h-4 text-cyan-400" />
+                  Join Room
+                </button>
+              </div>
             </div>
           </div>
         </div>
