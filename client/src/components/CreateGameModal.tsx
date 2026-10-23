@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { X, Sliders, Clock, ShieldAlert, Sparkles, ChevronRight } from 'lucide-react';
+import { X, Sliders, Clock, ShieldAlert, Sparkles, Plus, Minus, Lock, Globe, Users } from 'lucide-react';
 import type { RoomSettings, GameMode, WrongClickPenalty } from '../types/index.js';
+import { soundManager } from '../services/audio.js';
 
 interface CreateGameModalProps {
   onClose: () => void;
@@ -9,51 +10,27 @@ interface CreateGameModalProps {
 }
 
 export const CreateGameModal: React.FC<CreateGameModalProps> = ({ onClose, onCreateRoom, isLoading }) => {
-  const [rangePreset, setRangePreset] = useState<string>('150');
-  const [customMin, setCustomMin] = useState<number>(1);
-  const [customMax, setCustomMax] = useState<number>(150);
+  const [rangePreset, setRangePreset] = useState<number | 'custom'>(100);
+  const [customCount, setCustomCount] = useState<number>(100);
 
   const [playerLimit, setPlayerLimit] = useState<number>(4);
-  const [countdown, setCountdown] = useState<number>(5);
   const [gameMode, setGameMode] = useState<GameMode>('TIME_CHALLENGE');
   const [durationPreset, setDurationPreset] = useState<number>(180);
   const [isPrivate, setIsPrivate] = useState<boolean>(false);
+  const [countdown, setCountdown] = useState<number>(5);
   const [wrongClickPenalty, setWrongClickPenalty] = useState<WrongClickPenalty>('NONE');
 
   const [error, setError] = useState<string | null>(null);
 
+  const effectiveMax = rangePreset === 'custom' ? Math.min(300, Math.max(10, customCount || 50)) : rangePreset;
+
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-
-    let min = 1;
-    let max = 150;
-
-    if (rangePreset === 'custom') {
-      min = customMin;
-      max = customMax;
-      if (min < 1) {
-        setError('Minimum number must be 1 or higher');
-        return;
-      }
-      if (max <= min) {
-        setError('Maximum number must be greater than minimum');
-        return;
-      }
-      if (max - min + 1 < 5) {
-        setError('Grid must contain at least 5 numbers');
-        return;
-      }
-      if (max > 500) {
-        setError('Maximum number cannot exceed 500');
-        return;
-      }
-    } else {
-      max = parseInt(rangePreset, 10);
-    }
+    soundManager.playCorrect();
 
     const settings: RoomSettings = {
-      numberRange: { min, max },
+      numberRange: { min: 1, max: effectiveMax },
       playerLimit,
       countdownSeconds: countdown,
       gameMode,
@@ -68,141 +45,231 @@ export const CreateGameModal: React.FC<CreateGameModalProps> = ({ onClose, onCre
     onCreateRoom(settings);
   };
 
-  const getRangeCount = () => {
-    if (rangePreset === 'custom') return Math.max(0, customMax - customMin + 1);
-    return parseInt(rangePreset, 10);
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-sm overflow-y-auto">
-      <div className="relative w-full max-w-lg bg-[#0F172A] border border-cyan-500/40 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-2xl my-auto max-h-[94vh] flex flex-col">
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-fade-in overflow-y-auto cursor-pointer"
+    >
+      <div 
+        onClick={(e) => e.stopPropagation()} 
+        className="relative w-full max-w-md bg-[#0D1424] border border-cyan-500/30 rounded-3xl p-5 sm:p-6 shadow-[0_0_50px_rgba(0,240,255,0.2)] my-auto max-h-[92vh] flex flex-col cursor-default"
+      >
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-gray-800 mb-4 flex-shrink-0">
+        <div className="flex items-center justify-between pb-3 border-b border-gray-800 flex-shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-cyan-500/20 text-cyan-400">
+            <div className="w-10 h-10 rounded-2xl bg-cyan-500/15 border border-cyan-500/40 flex items-center justify-center text-cyan-400">
               <Sliders className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="font-display font-extrabold text-lg sm:text-xl text-white">Create Match</h2>
-              <span className="text-[11px] text-gray-400">Configure your multiplayer game</span>
+              <h2 className="font-display font-black text-base sm:text-lg text-white">
+                Create Match
+              </h2>
+              <span className="text-[11px] text-gray-400">
+                Configure your multiplayer room
+              </span>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="p-1.5 rounded-full bg-gray-800 text-gray-400 hover:text-white"
+            className="p-1.5 rounded-xl bg-gray-800/60 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {error && (
-          <div className="mb-4 p-2.5 rounded-xl bg-rose-950/80 border border-rose-500 text-rose-200 text-xs flex items-center gap-2 flex-shrink-0">
+          <div className="mt-3 p-2.5 rounded-xl bg-rose-950/80 border border-rose-500 text-rose-200 text-xs flex items-center gap-2 flex-shrink-0">
             <ShieldAlert className="w-4 h-4 flex-shrink-0" />
             <span>{error}</span>
           </div>
         )}
 
-        {/* Scrollable Form Body */}
-        <form onSubmit={handleCreate} className="space-y-4 overflow-y-auto pr-1 flex-1">
-          {/* Number Range */}
+        {/* Form Body */}
+        <form onSubmit={handleCreate} className="mt-4 space-y-4 overflow-y-auto pr-1 flex-1">
+          {/* 1. Target Number Range */}
           <div>
-            <label className="block text-[11px] font-bold text-gray-300 uppercase tracking-wider mb-1.5">
-              Number Range ({getRangeCount()} Numbers)
-            </label>
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
-              {['50', '100', '150', '200', '300', 'custom'].map((val) => (
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-[11px] font-mono uppercase text-cyan-400 font-bold tracking-wider">
+                Target Number Range
+              </label>
+              <span className="text-xs font-mono font-bold text-amber-400">
+                1 – {effectiveMax} tiles
+              </span>
+            </div>
+
+            <div className="grid grid-cols-4 gap-1.5">
+              {[50, 100, 150].map((val) => (
                 <button
                   key={val}
                   type="button"
                   onClick={() => setRangePreset(val)}
-                  className={`py-2 px-1 text-center rounded-xl text-xs font-semibold border transition-all ${
+                  className={`py-2 rounded-xl text-xs font-display font-black border transition-all text-center cursor-pointer ${
                     rangePreset === val
-                      ? 'bg-cyan-500/25 text-cyan-300 border-cyan-400 font-bold'
+                      ? 'bg-cyan-500/25 text-cyan-300 border-cyan-400 shadow-[0_0_12px_rgba(0,240,255,0.25)]'
                       : 'bg-gray-900/60 text-gray-400 border-gray-800 hover:border-gray-700'
                   }`}
                 >
-                  {val === 'custom' ? 'Custom' : `1–${val}`}
+                  1–{val}
                 </button>
               ))}
+
+              <button
+                type="button"
+                onClick={() => setRangePreset('custom')}
+                className={`py-2 rounded-xl text-xs font-display font-black border transition-all text-center cursor-pointer ${
+                  rangePreset === 'custom'
+                    ? 'bg-amber-500/25 text-amber-300 border-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.25)]'
+                    : 'bg-gray-900/60 text-gray-400 border-gray-800 hover:border-gray-700'
+                }`}
+              >
+                Custom
+              </button>
             </div>
 
+            {/* Custom Input */}
             {rangePreset === 'custom' && (
-              <div className="mt-2 flex items-center gap-2 p-2 bg-black/40 rounded-xl border border-gray-800">
-                <div className="flex-1">
-                  <span className="text-[10px] text-gray-400 block mb-0.5">Min (≥ 1)</span>
-                  <input
-                    type="number"
-                    min="1"
-                    max="490"
-                    value={customMin}
-                    onChange={(e) => setCustomMin(parseInt(e.target.value, 10) || 1)}
-                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-400"
-                  />
-                </div>
-                <span className="text-gray-500 mt-3 text-xs">to</span>
-                <div className="flex-1">
-                  <span className="text-[10px] text-gray-400 block mb-0.5">Max (≤ 500)</span>
-                  <input
-                    type="number"
-                    min="5"
-                    max="500"
-                    value={customMax}
-                    onChange={(e) => setCustomMax(parseInt(e.target.value, 10) || 50)}
-                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-400"
-                  />
+              <div className="mt-2.5 p-3 rounded-2xl bg-black/40 border border-amber-500/40 animate-fade-in">
+                <span className="text-[10px] font-mono text-gray-400 block mb-1.5">
+                  Enter target count (10 – 300):
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCustomCount((v) => Math.max(10, v - 10))}
+                    className="w-9 h-9 rounded-xl bg-gray-800/80 hover:bg-gray-700 border border-gray-700 text-gray-300 flex items-center justify-center font-bold active:scale-95"
+                  >
+                    <Minus className="w-3.5 h-3.5" />
+                  </button>
+
+                  <div className="flex-1 relative">
+                    <input
+                      type="number"
+                      min={10}
+                      max={300}
+                      value={customCount || ''}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        setCustomCount(isNaN(val) ? 0 : Math.min(300, Math.max(1, val)));
+                      }}
+                      className="w-full h-9 text-center font-display font-black text-sm text-amber-400 bg-gray-900/80 border border-amber-500/60 rounded-xl focus:outline-none focus:ring-1 focus:ring-amber-400 shadow-inner"
+                    />
+                    <span className="absolute right-2 top-2 text-[10px] font-mono text-gray-500 pointer-events-none">
+                      tiles
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setCustomCount((v) => Math.min(300, v + 10))}
+                    className="w-9 h-9 rounded-xl bg-gray-800/80 hover:bg-gray-700 border border-gray-700 text-gray-300 flex items-center justify-center font-bold active:scale-95"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Game Mode */}
+          {/* 2. Player Capacity Limit (2 to 10 players) */}
           <div>
-            <label className="block text-[11px] font-bold text-gray-300 uppercase tracking-wider mb-1.5">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-[11px] font-mono uppercase text-cyan-400 font-bold tracking-wider flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 text-cyan-400" />
+                Player Limit
+              </label>
+              <span className="text-xs font-mono font-bold text-cyan-300">
+                {playerLimit} Players Max
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 mb-2">
+              <button
+                type="button"
+                onClick={() => setPlayerLimit((p) => Math.max(2, p - 1))}
+                className="w-10 h-10 rounded-xl bg-gray-800/80 hover:bg-gray-700 text-gray-300 flex items-center justify-center font-bold border border-gray-700 active:scale-95 cursor-pointer"
+              >
+                <Minus className="w-4 h-4" />
+              </button>
+
+              <div className="flex-1 py-2 text-center bg-gray-900/90 border border-cyan-500/40 rounded-xl text-sm font-display font-black text-white shadow-inner">
+                {playerLimit} Players Max (2–10)
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setPlayerLimit((p) => Math.min(10, p + 1))}
+                className="w-10 h-10 rounded-xl bg-gray-800/80 hover:bg-gray-700 text-gray-300 flex items-center justify-center font-bold border border-gray-700 active:scale-95 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Quick Chips Row */}
+            <div className="grid grid-cols-5 sm:grid-cols-9 gap-1">
+              {[2, 3, 4, 5, 6, 7, 8, 9, 10].map((count) => (
+                <button
+                  key={count}
+                  type="button"
+                  onClick={() => setPlayerLimit(count)}
+                  className={`py-1 text-center rounded-lg text-xs font-mono font-bold border transition-all cursor-pointer ${
+                    playerLimit === count
+                      ? 'bg-cyan-500/25 text-cyan-300 border-cyan-400'
+                      : 'bg-gray-900/60 text-gray-400 border-gray-800 hover:border-gray-700'
+                  }`}
+                >
+                  {count}P
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 3. Game Mode & Duration */}
+          <div>
+            <label className="text-[11px] font-mono uppercase text-cyan-400 font-bold tracking-wider block mb-2">
               Game Mode
             </label>
+
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => setGameMode('TIME_CHALLENGE')}
-                className={`p-2.5 rounded-xl text-left border transition-all ${
+                className={`p-3 rounded-2xl text-left border transition-all cursor-pointer ${
                   gameMode === 'TIME_CHALLENGE'
-                    ? 'bg-purple-500/25 text-purple-300 border-purple-400'
+                    ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400 shadow-sm'
                     : 'bg-gray-900/60 text-gray-400 border-gray-800'
                 }`}
               >
-                <div className="flex items-center gap-1.5 font-bold text-xs">
-                  <Clock className="w-3.5 h-3.5 text-purple-400" />
+                <div className="flex items-center gap-1.5 font-display font-black text-xs text-white mb-0.5">
+                  <Clock className="w-3.5 h-3.5 text-cyan-400" />
                   Time Challenge
                 </div>
-                <div className="text-[10px] opacity-75 mt-0.5">Most points in time</div>
+                <div className="text-[10px] text-gray-400">Score highest within time</div>
               </button>
 
               <button
                 type="button"
                 onClick={() => setGameMode('COMPLETE_GRID')}
-                className={`p-2.5 rounded-xl text-left border transition-all ${
+                className={`p-3 rounded-2xl text-left border transition-all cursor-pointer ${
                   gameMode === 'COMPLETE_GRID'
-                    ? 'bg-cyan-500/25 text-cyan-300 border-cyan-400'
+                    ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400 shadow-sm'
                     : 'bg-gray-900/60 text-gray-400 border-gray-800'
                 }`}
               >
-                <div className="flex items-center gap-1.5 font-bold text-xs">
+                <div className="flex items-center gap-1.5 font-display font-black text-xs text-white mb-0.5">
                   <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
                   Complete Grid
                 </div>
-                <div className="text-[10px] opacity-75 mt-0.5">Play until all found</div>
+                <div className="text-[10px] text-gray-400">Hunt until all cleared</div>
               </button>
             </div>
-          </div>
 
-          {/* Duration & Capacity (side by side) */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[11px] font-bold text-gray-300 uppercase tracking-wider mb-1.5">
-                Duration
-              </label>
-              <div className="grid grid-cols-4 gap-1">
+            {/* Duration Selector (for Time Challenge) */}
+            {gameMode === 'TIME_CHALLENGE' && (
+              <div className="mt-2.5 flex items-center gap-2 p-2 rounded-xl bg-gray-900/60 border border-gray-800">
+                <span className="text-xs text-gray-400 font-mono">Duration:</span>
                 {[
                   { label: '1m', sec: 60 },
                   { label: '3m', sec: 180 },
@@ -213,107 +280,48 @@ export const CreateGameModal: React.FC<CreateGameModalProps> = ({ onClose, onCre
                     key={item.sec}
                     type="button"
                     onClick={() => setDurationPreset(item.sec)}
-                    className={`py-1.5 text-center rounded-lg text-xs font-semibold border ${
+                    className={`flex-1 py-1 text-center rounded-lg text-xs font-mono font-bold border transition-colors cursor-pointer ${
                       durationPreset === item.sec
-                        ? 'bg-cyan-500/25 text-cyan-300 border-cyan-400'
-                        : 'bg-gray-900/60 text-gray-400 border-gray-800'
+                        ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400'
+                        : 'bg-gray-800/40 text-gray-400 border-gray-700'
                     }`}
                   >
                     {item.label}
                   </button>
                 ))}
               </div>
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-bold text-gray-300 uppercase tracking-wider mb-1.5">
-                Player Limit
-              </label>
-              <div className="grid grid-cols-3 gap-1">
-                {[2, 4, 10].map((count) => (
-                  <button
-                    key={count}
-                    type="button"
-                    onClick={() => setPlayerLimit(count)}
-                    className={`py-1.5 text-center rounded-lg text-xs font-semibold border ${
-                      playerLimit === count
-                        ? 'bg-cyan-500/25 text-cyan-300 border-cyan-400'
-                        : 'bg-gray-900/60 text-gray-400 border-gray-800'
-                    }`}
-                  >
-                    {count}P
-                  </button>
-                ))}
-              </div>
-            </div>
+            )}
           </div>
 
-          {/* Countdown & Penalty */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[11px] font-bold text-gray-300 uppercase tracking-wider mb-1.5">
-                Countdown
-              </label>
-              <div className="grid grid-cols-3 gap-1">
-                {[5, 10, 30].map((sec) => (
-                  <button
-                    key={sec}
-                    type="button"
-                    onClick={() => setCountdown(sec)}
-                    className={`py-1.5 text-center rounded-lg text-xs font-semibold border ${
-                      countdown === sec
-                        ? 'bg-cyan-500/25 text-cyan-300 border-cyan-400'
-                        : 'bg-gray-900/60 text-gray-400 border-gray-800'
-                    }`}
-                  >
-                    {sec}s
-                  </button>
-                ))}
+          {/* 4. Room Privacy Toggle */}
+          <div className="p-3 rounded-2xl bg-[#11192d]/70 border border-gray-800 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {isPrivate ? (
+                <Lock className="w-4 h-4 text-amber-400" />
+              ) : (
+                <Globe className="w-4 h-4 text-cyan-400" />
+              )}
+              <div>
+                <div className="font-display font-bold text-xs text-white">
+                  {isPrivate ? 'Private Room' : 'Public Room'}
+                </div>
+                <div className="text-[10px] text-gray-400">
+                  {isPrivate ? 'Only friends with room code can join' : 'Listed in public live lobbies'}
+                </div>
               </div>
             </div>
 
-            <div>
-              <label className="block text-[11px] font-bold text-gray-300 uppercase tracking-wider mb-1.5">
-                Mistake Penalty
-              </label>
-              <div className="grid grid-cols-2 gap-1">
-                <button
-                  type="button"
-                  onClick={() => setWrongClickPenalty('NONE')}
-                  className={`py-1.5 text-center rounded-lg text-xs font-semibold border ${
-                    wrongClickPenalty === 'NONE'
-                      ? 'bg-cyan-500/25 text-cyan-300 border-cyan-400'
-                      : 'bg-gray-900/60 text-gray-400 border-gray-800'
-                  }`}
-                >
-                  Off
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setWrongClickPenalty('SCORE')}
-                  className={`py-1.5 text-center rounded-lg text-xs font-semibold border ${
-                    wrongClickPenalty === 'SCORE'
-                      ? 'bg-rose-500/25 text-rose-300 border-rose-400'
-                      : 'bg-gray-900/60 text-gray-400 border-gray-800'
-                  }`}
-                >
-                  -1 Pt
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Private room toggle */}
-          <div className="pt-1">
-            <label className="flex items-center gap-2 cursor-pointer text-xs text-gray-300">
-              <input
-                type="checkbox"
-                checked={isPrivate}
-                onChange={(e) => setIsPrivate(e.target.checked)}
-                className="rounded bg-gray-900 border-gray-700 text-cyan-500 focus:ring-0"
-              />
-              Private Match (Only friends with code can join)
-            </label>
+            <button
+              type="button"
+              onClick={() => setIsPrivate(!isPrivate)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-display font-bold border transition-colors cursor-pointer ${
+                isPrivate
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                  : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+              }`}
+            >
+              {isPrivate ? 'Private' : 'Public'}
+            </button>
           </div>
 
           {/* Action Button */}
@@ -321,10 +329,10 @@ export const CreateGameModal: React.FC<CreateGameModalProps> = ({ onClose, onCre
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3.5 rounded-xl font-display font-extrabold text-sm sm:text-base text-black bg-gradient-to-r from-cyan-400 via-sky-400 to-purple-400 hover:opacity-95 shadow-lg transition-all tap-effect flex items-center justify-center gap-2"
+              className="w-full py-3.5 rounded-2xl font-display font-black text-sm text-black bg-gradient-to-r from-cyan-400 via-sky-400 to-purple-400 hover:brightness-110 shadow-[0_0_25px_rgba(0,240,255,0.4)] flex items-center justify-center gap-2 tap-effect cursor-pointer disabled:opacity-50"
             >
-              {isLoading ? 'Creating Room...' : 'Create Room & Enter'}
-              <ChevronRight className="w-4 h-4" />
+              <Users className="w-4 h-4 stroke-[2.5]" />
+              {isLoading ? 'Creating Room...' : `Create Room (1–${effectiveMax})`}
             </button>
           </div>
         </form>

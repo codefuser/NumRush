@@ -7,8 +7,16 @@ interface HowToPlayModalProps {
 
 export const HowToPlayModal: React.FC<HowToPlayModalProps> = ({ onClose }) => {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-      <div className="relative w-full max-w-2xl bg-surface border border-cyan-500/30 rounded-3xl p-6 sm:p-8 shadow-[0_0_50px_rgba(0,240,255,0.15)] max-h-[90vh] overflow-y-auto">
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-fade-in cursor-pointer"
+    >
+      <div 
+        onClick={(e) => e.stopPropagation()} 
+        className="relative w-full max-w-2xl bg-surface border border-cyan-500/30 rounded-3xl p-6 sm:p-8 shadow-[0_0_50px_rgba(0,240,255,0.15)] max-h-[90vh] overflow-y-auto cursor-default"
+      >
         <button
           onClick={onClose}
           className="absolute top-5 right-5 p-2 rounded-full bg-surface-light text-gray-400 hover:text-white transition-colors"

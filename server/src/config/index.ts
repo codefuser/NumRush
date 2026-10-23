@@ -8,7 +8,7 @@ export const config = {
   appUrl: process.env.APP_URL || 'http://localhost:5173',
   supabase: {
     url: process.env.SUPABASE_URL || '',
-    serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+    serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || process.env.SUPABASE_ANON_KEY || '',
   },
   databaseUrl: process.env.DATABASE_URL || '',
   maxNumberLimit: parseInt(process.env.MAX_NUMBER_LIMIT || '500', 10),

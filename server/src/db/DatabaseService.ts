@@ -241,6 +241,61 @@ export class DatabaseService {
   }
 
   /**
+   * Records a completed solo practice match
+   */
+  public async recordSoloMatch(params: {
+    playerId: string;
+    displayName: string;
+    score: number;
+    won: boolean;
+    accuracy: number;
+    avgReactionTimeMs: number;
+    gameMode: string;
+  }): Promise<PersistentPlayerStats> {
+    const { playerId, displayName, score, won, accuracy, avgReactionTimeMs, gameMode } = params;
+    const current = this.memoryStats.get(playerId) || {
+      playerId,
+      displayName,
+      totalMatches: 0,
+      wins: 0,
+      losses: 0,
+      totalPoints: 0,
+      bestScore: 0,
+      avgAccuracy: 0,
+      avgReactionTimeMs: 0,
+      lastPlayedAt: Date.now(),
+    };
+
+    current.totalMatches += 1;
+    if (won) current.wins += 1;
+    else current.losses += 1;
+
+    current.totalPoints += score;
+    current.bestScore = Math.max(current.bestScore, score);
+    current.displayName = displayName;
+    current.lastPlayedAt = Date.now();
+
+    current.avgAccuracy = Math.round(((current.avgAccuracy * (current.totalMatches - 1) + accuracy) / current.totalMatches) * 10) / 10;
+    current.avgReactionTimeMs = Math.round((current.avgReactionTimeMs * (current.totalMatches - 1) + avgReactionTimeMs) / current.totalMatches);
+
+    this.memoryStats.set(playerId, current);
+
+    const historyList = this.memoryHistory.get(playerId) || [];
+    historyList.unshift({
+      matchId: `solo_${Date.now()}`,
+      gameMode,
+      score,
+      rank: 1,
+      accuracy,
+      won,
+      endedAt: Date.now(),
+    });
+    this.memoryHistory.set(playerId, historyList.slice(0, 50));
+
+    return current;
+  }
+
+  /**
    * Retrieves recent match history for a player
    */
   public async getPlayerHistory(playerId: string): Promise<PlayerHistoryEntry[]> {

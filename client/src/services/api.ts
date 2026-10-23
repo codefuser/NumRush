@@ -47,6 +47,28 @@ export const api = {
     }
   },
 
+  async recordSoloMatch(params: {
+    playerId: string;
+    displayName: string;
+    score: number;
+    won: boolean;
+    accuracy?: number;
+    avgReactionTimeMs?: number;
+    gameMode?: string;
+  }) {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/solo/record`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      });
+      return await res.json();
+    } catch (e) {
+      console.error('Failed to record solo match:', e);
+      return { success: false };
+    }
+  },
+
   async getLeaderboard(): Promise<PersistentPlayerStats[]> {
     try {
       const res = await fetch(`${BACKEND_URL}/api/leaderboard`);

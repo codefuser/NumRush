@@ -20,8 +20,16 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ onClose, cur
   }, []);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-      <div className="relative w-full max-w-2xl bg-surface border border-amber-500/30 rounded-3xl p-6 sm:p-8 shadow-[0_0_50px_rgba(245,158,11,0.15)] max-h-[90vh] flex flex-col">
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-fade-in cursor-pointer"
+    >
+      <div 
+        onClick={(e) => e.stopPropagation()} 
+        className="relative w-full max-w-2xl bg-surface border border-amber-500/30 rounded-3xl p-5 sm:p-8 shadow-[0_0_50px_rgba(245,158,11,0.15)] max-h-[90vh] flex flex-col cursor-default"
+      >
         {/* Close Button */}
         <button
           onClick={onClose}

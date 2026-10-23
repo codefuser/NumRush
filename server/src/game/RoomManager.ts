@@ -29,6 +29,7 @@ export class RoomManager {
   // Callbacks for broadcasting events through Socket.IO
   private broadcastToRoom: (roomId: string, event: string, payload: unknown) => void = () => {};
   private sendToSocket: (socketId: string, event: string, payload: unknown) => void = () => {};
+  private onMatchFinishedCallback?: (results: MatchResults, match: MatchState) => void;
 
   public setBroadcaster(
     broadcast: (roomId: string, event: string, payload: unknown) => void,
@@ -36,6 +37,10 @@ export class RoomManager {
   ) {
     this.broadcastToRoom = broadcast;
     this.sendToSocket = sendDirect;
+  }
+
+  public setOnMatchFinished(cb: (results: MatchResults, match: MatchState) => void) {
+    this.onMatchFinishedCallback = cb;
   }
 
   /**
@@ -347,6 +352,9 @@ export class RoomManager {
       countdownEndsAt,
       currentTarget: room.currentMatch.currentTarget,
       maxTarget: room.currentMatch.maxTarget,
+      matchId: room.currentMatch.id,
+      shuffledGrid: room.currentMatch.shuffledGrid,
+      durationSeconds: room.settings.durationSeconds,
     });
 
     // Start countdown timer
@@ -515,6 +523,10 @@ export class RoomManager {
 
     const results = GameRules.computeResults(room.currentMatch, room.players);
     room.lastResults = results;
+
+    if (this.onMatchFinishedCallback && room.currentMatch) {
+      this.onMatchFinishedCallback(results, room.currentMatch);
+    }
 
     // Reset player ready states for next round
     for (const p of Object.values(room.players)) {

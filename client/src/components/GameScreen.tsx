@@ -85,36 +85,61 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   const totalNumbers = match.maxTarget - match.settings.numberRange.min + 1;
   const claimedCount = Object.keys(match.claimedMap).length;
 
-  // Grid columns adapted for number count
+  // Grid columns adapted for mobile screens & number count
   const getGridCols = () => {
-    if (totalNumbers <= 50) return 10;
-    if (totalNumbers <= 100) return 10;
-    if (totalNumbers <= 200) return 15;
-    return 20;
+    if (totalNumbers <= 30) return 5;
+    if (totalNumbers <= 50) return 5;
+    if (totalNumbers <= 75) return 6;
+    if (totalNumbers <= 100) return 8;
+    if (totalNumbers <= 200) return 10;
+    return 12;
   };
 
   const gridCols = getGridCols();
+  const tileSize = totalNumbers <= 50 ? 54 : totalNumbers <= 100 ? 44 : 38;
+
+  // Auto-fit calculations
+  const calculateFitZoom = useCallback(() => {
+    if (!viewportRef.current) return 1;
+    const vw = viewportRef.current.clientWidth;
+    const vh = viewportRef.current.clientHeight;
+
+    const gap = 8;
+    const totalCols = gridCols;
+    const totalRows = Math.ceil(totalNumbers / totalCols);
+
+    const boardW = totalCols * tileSize + (totalCols - 1) * gap + 32;
+    const boardH = totalRows * tileSize + (totalRows - 1) * gap + 32;
+
+    const scaleX = (vw - 24) / boardW;
+    const scaleY = (vh - 24) / boardH;
+    const idealZoom = Math.min(scaleX, scaleY, 1.15);
+    return Math.max(0.35, Math.round(idealZoom * 100) / 100);
+  }, [totalNumbers, gridCols, tileSize]);
+
+  // Initial fit on match start
+  useEffect(() => {
+    const fitZoom = calculateFitZoom();
+    setZoom(fitZoom);
+    setPan({ x: 0, y: 0 });
+  }, [calculateFitZoom]);
+
+  // Window resize handler
+  useEffect(() => {
+    const handleResize = () => {
+      if (!isDraggingRef.current) {
+        setZoom(calculateFitZoom());
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [calculateFitZoom]);
 
   // Reset / Fit to Screen
   const handleFitScreen = useCallback(() => {
-    if (!viewportRef.current || !boardRef.current) {
-      setZoom(1);
-      setPan({ x: 0, y: 0 });
-      return;
-    }
-    const vp = viewportRef.current.getBoundingClientRect();
-    const board = boardRef.current.getBoundingClientRect();
-
-    const naturalWidth = board.width / zoom;
-    const naturalHeight = board.height / zoom;
-
-    const scaleX = (vp.width - 24) / naturalWidth;
-    const scaleY = (vp.height - 24) / naturalHeight;
-    const bestScale = Math.max(0.4, Math.min(1.2, Math.min(scaleX, scaleY)));
-
-    setZoom(Math.round(bestScale * 100) / 100);
     setPan({ x: 0, y: 0 });
-  }, [zoom]);
+    setZoom(calculateFitZoom());
+  }, [calculateFitZoom]);
 
   // Zoom Helpers
   const handleZoomIn = () => setZoom((z) => Math.min(2.5, Math.round((z + 0.15) * 100) / 100));
@@ -202,23 +227,38 @@ export const GameScreen: React.FC<GameScreenProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[#070b13] text-gray-100 select-none overflow-hidden touch-none">
-      {/* 1. Countdown Overlay */}
+      {/* 1. Center Countdown Overlay */}
       {countdownRemaining !== null && countdownRemaining >= 0 && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/90 backdrop-blur-sm">
-          <span className="text-xs uppercase font-mono tracking-widest text-cyan-400 block mb-2">
-            Game Starting
-          </span>
-          <div className="font-display font-black text-8xl sm:text-9xl text-amber-400 drop-shadow-[0_0_30px_rgba(245,158,11,0.8)]">
-            {countdownRemaining === 0 ? 'GO!' : countdownRemaining}
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#070b13]/95 backdrop-blur-md animate-fade-in select-none">
+          <div className="text-center space-y-3">
+            <span className="text-xs uppercase font-mono tracking-widest text-cyan-400 font-bold block animate-pulse">
+              {countdownRemaining === 0 ? 'MATRIX UNLOCKED!' : 'PREPARING MATRIX HUNT'}
+            </span>
+
+            <div className="relative inline-flex items-center justify-center">
+              <div className="w-36 h-36 sm:w-44 sm:h-44 rounded-full border-2 border-cyan-500/30 flex items-center justify-center bg-black/60 shadow-[0_0_50px_rgba(0,240,255,0.3)]">
+                <span
+                  key={countdownRemaining}
+                  className={`font-display font-black tracking-tight animate-ping-once ${
+                    countdownRemaining === 0
+                      ? 'text-5xl sm:text-6xl text-emerald-400 drop-shadow-[0_0_25px_rgba(16,185,129,0.9)]'
+                      : 'text-7xl sm:text-8xl text-amber-400 drop-shadow-[0_0_30px_rgba(245,158,11,0.9)]'
+                  }`}
+                >
+                  {countdownRemaining === 0 ? 'GO!' : countdownRemaining}
+                </span>
+              </div>
+            </div>
+
+            <p className="text-xs text-gray-300 font-mono">
+              First Target: <span className="text-amber-400 font-bold text-sm">#{match.currentTarget}</span>
+            </p>
           </div>
-          <p className="text-xs text-gray-300 mt-4 font-mono">
-            Search for number <span className="text-amber-400 font-bold">{match.currentTarget}</span>
-          </p>
         </div>
       )}
 
       {/* 2. Minimal Native Game Top HUD */}
-      <header className="h-14 bg-[#0B0F19]/95 border-b border-gray-800/80 px-3 flex items-center justify-between z-30 flex-shrink-0">
+      <header className="bg-[#0B0F19]/95 border-b border-gray-800/80 px-3 pt-[max(env(safe-area-inset-top),28px)] sm:pt-3 pb-2.5 flex items-center justify-between z-30 flex-shrink-0">
         {/* Left: Leave / Room code & Time */}
         <div className="flex items-center gap-2">
           {onLeaveRoom && (
@@ -271,7 +311,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
         </div>
       </header>
 
-      {/* 3. Infinite Pan & Zoom Canvas (Zero Margin, Native Touch Scrolling & Dragging) */}
+      {/* 3. Centered Pan & Zoom Canvas */}
       <main
         ref={viewportRef}
         onWheel={handleWheel}
@@ -279,71 +319,43 @@ export const GameScreen: React.FC<GameScreenProps> = ({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
-        className="flex-1 relative w-full h-full overflow-hidden cursor-grab active:cursor-grabbing bg-[#070b13]"
+        className="flex-1 relative w-full h-full overflow-hidden flex items-center justify-center bg-[#070b13] cursor-grab active:cursor-grabbing"
         style={{ touchAction: 'none' }}
       >
-        {/* Floating Pan/Zoom Matrix */}
+        {/* Centered Matrix Card */}
         <div
           ref={boardRef}
-          className="absolute origin-center will-change-transform p-3"
+          className="relative will-change-transform select-none p-3 rounded-2xl bg-slate-950/40 border border-slate-800/60 shadow-2xl backdrop-blur-sm"
           style={{
-            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+            transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})`,
+            transformOrigin: 'center center',
             transition: isDraggingRef.current ? 'none' : 'transform 0.08s ease-out',
-            left: '50%',
-            top: '50%',
-            transformOrigin: '0 0',
-            marginLeft: `-${(gridCols * 48) / 2}px`,
-            marginTop: `-${(Math.ceil(totalNumbers / gridCols) * 48) / 2}px`,
           }}
         >
           {/* Numbers Grid (All unclaimed numbers look identical so players must search!) */}
           <div
-            className="grid gap-1.5 select-none"
+            className="grid gap-2 select-none"
             style={{
-              gridTemplateColumns: `repeat(${gridCols}, minmax(42px, 48px))`,
+              gridTemplateColumns: `repeat(${gridCols}, minmax(${tileSize - 6}px, ${tileSize}px))`,
             }}
           >
             {match.shuffledGrid.map((num) => {
               const claim = match.claimedMap[num];
+              const isCountingDown = countdownRemaining !== null && countdownRemaining > 0;
               return (
                 <Tile
                   key={num}
                   number={num}
                   claim={claim}
-                  disabled={match.status !== 'RUNNING'}
+                  disabled={match.status !== 'RUNNING' || isCountingDown}
                   onClaim={handleTileClaim}
+                  isMasked={isCountingDown}
                 />
               );
             })}
           </div>
         </div>
 
-        {/* 4. Minimal Floating Controls (Bottom Corner) */}
-        <div className="absolute bottom-4 right-4 flex items-center gap-1 bg-[#111827]/85 backdrop-blur-md p-1 rounded-xl border border-gray-800 shadow-xl z-20">
-          <button
-            onClick={handleZoomOut}
-            title="Zoom Out"
-            className="p-2 text-gray-300 hover:text-white rounded-lg active:bg-gray-700"
-          >
-            <ZoomOut className="w-4 h-4" />
-          </button>
-
-          <button
-            onClick={handleFitScreen}
-            title="Fit to Screen"
-            className="px-2 py-1 text-[11px] font-mono text-cyan-300 hover:text-white rounded-lg active:bg-gray-700"
-          >
-            Fit
-          </button>
-
-          <button
-            onClick={handleZoomIn}
-            title="Zoom In"
-            className="p-2 text-gray-300 hover:text-white rounded-lg active:bg-gray-700"
-          >
-            <ZoomIn className="w-4 h-4" />
-          </button>
-        </div>
 
         {/* Bottom Left Minimal Progress indicator */}
         <div className="absolute bottom-4 left-4 bg-[#111827]/80 backdrop-blur-md px-3 py-1.5 rounded-xl border border-gray-800 text-[11px] font-mono text-gray-400 z-20 pointer-events-none">

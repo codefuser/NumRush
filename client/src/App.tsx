@@ -5,11 +5,15 @@ import { LobbyScreen } from './components/LobbyScreen.js';
 import { GameScreen } from './components/GameScreen.js';
 import { ResultsScreen } from './components/ResultsScreen.js';
 import { PracticeScreen } from './components/PracticeScreen.js';
+import { SoloSetupModal, SoloGameConfig } from './components/SoloSetupModal.js';
 import { CreateGameModal } from './components/CreateGameModal.js';
 import { JoinGameModal } from './components/JoinGameModal.js';
 import { LeaderboardModal } from './components/LeaderboardModal.js';
 import { ProfileModal } from './components/ProfileModal.js';
 import { HowToPlayModal } from './components/HowToPlayModal.js';
+import { LoadingScreen } from './components/LoadingScreen.js';
+import { WelcomeNameModal } from './components/WelcomeNameModal.js';
+import { api } from './services/api.js';
 import { socketService } from './services/socket.js';
 import type { ActiveSessionData } from './services/socket.js';
 import { soundManager } from './services/audio.js';
@@ -36,6 +40,16 @@ export const App: React.FC = () => {
     return localStorage.getItem('numrush_display_name') || `Player_${Math.floor(1000 + Math.random() * 9000)}`;
   });
 
+  const [isNameModalOpen, setIsNameModalOpen] = useState<boolean>(() => {
+    return !localStorage.getItem('numrush_display_name');
+  });
+
+  const handleSaveInitialName = (name: string) => {
+    handleUpdateDisplayName(name);
+    api.updateProfile(userId, name);
+    setIsNameModalOpen(false);
+  };
+
   // 2. Navigation & Game State
   const [screen, setScreen] = useState<Screen>('HOME');
   const [room, setRoom] = useState<RoomState | null>(null);
@@ -47,12 +61,25 @@ export const App: React.FC = () => {
   const [serverRemainingSeconds, setServerRemainingSeconds] = useState<number>(180);
 
   // Modals
+  const [isSoloSetupOpen, setIsSoloSetupOpen] = useState<boolean>(false);
+  const [soloConfig, setSoloConfig] = useState<SoloGameConfig>({
+    maxNumber: 50,
+    gameMode: 'COMPLETE_GRID',
+    timeLimitSeconds: 180,
+  });
   const [isCreateOpen, setIsCreateOpen] = useState<boolean>(false);
   const [isJoinOpen, setIsJoinOpen] = useState<boolean>(false);
   const [joinInitialCode, setJoinInitialCode] = useState<string>('');
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState<boolean>(false);
   const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
   const [isHowToPlayOpen, setIsHowToPlayOpen] = useState<boolean>(false);
+  const [isAppLoading, setIsAppLoading] = useState<boolean>(true);
+
+  const handleStartSolo = (config: SoloGameConfig) => {
+    setSoloConfig(config);
+    setIsSoloSetupOpen(false);
+    setScreen('PRACTICE');
+  };
 
   // Feedback & Loading
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -177,8 +204,26 @@ export const App: React.FC = () => {
     });
 
     // G. Game Countdown Start
-    socket.on('game:countdown', (data: { countdownSeconds: number; currentTarget: number; maxTarget: number }) => {
+    socket.on('game:countdown', (data: any) => {
       setCountdownRemaining(data.countdownSeconds);
+      if (data.shuffledGrid && data.matchId) {
+        setMatch({
+          id: data.matchId,
+          roomId: room?.id || '',
+          status: 'COUNTDOWN',
+          settings: room?.settings || ({} as any),
+          shuffledGrid: data.shuffledGrid,
+          currentTarget: data.currentTarget,
+          maxTarget: data.maxTarget,
+          startedAt: data.countdownEndsAt || Date.now() + data.countdownSeconds * 1000,
+          countdownEndsAt: data.countdownEndsAt || Date.now() + data.countdownSeconds * 1000,
+          endsAt: (data.countdownEndsAt || Date.now()) + (data.durationSeconds || 180) * 1000,
+          claims: [],
+          claimedMap: {},
+          playerStats: {},
+          lastClaimTimestamp: Date.now(),
+        });
+      }
       setScreen('GAME');
     });
 
@@ -188,7 +233,11 @@ export const App: React.FC = () => {
 
     // H. Game Started
     socket.on('game:started', (data: any) => {
-      setCountdownRemaining(null);
+      setCountdownRemaining(0); // Show GO!
+      setTimeout(() => {
+        setCountdownRemaining(null);
+      }, 700);
+
       setServerRemainingSeconds(data.durationSeconds);
 
       setMatch((prev) => ({
@@ -196,7 +245,7 @@ export const App: React.FC = () => {
         roomId: room?.id || '',
         status: 'RUNNING',
         settings: room?.settings || ({} as any),
-        shuffledGrid: data.shuffledGrid,
+        shuffledGrid: data.shuffledGrid || prev?.shuffledGrid || [],
         currentTarget: data.currentTarget,
         maxTarget: data.maxTarget,
         startedAt: data.startedAt,
@@ -242,7 +291,7 @@ export const App: React.FC = () => {
         const updatedPlayers = { ...prev.players };
         Object.entries(data.scores as Record<string, number>).forEach(([pid, score]) => {
           if (updatedPlayers[pid]) {
-            updatedPlayers[pid].score = score;
+            updatedPlayers[pid] = { ...updatedPlayers[pid], score };
           }
         });
         return { ...prev, players: updatedPlayers };
@@ -264,6 +313,7 @@ export const App: React.FC = () => {
       setResults(data.results);
       setCountdownRemaining(null);
       setScreen('RESULTS');
+      api.getProfile(userId);
     });
 
     // M. Play Again Ready
@@ -331,7 +381,7 @@ export const App: React.FC = () => {
     });
   };
 
-  const handleJoinRoom = (roomCode: string, password?: string) => {
+  const handleJoinRoom = (roomCode: string) => {
     setIsLoading(true);
     setErrorMessage(null);
     const socket = socketService.getSocket();
@@ -339,7 +389,6 @@ export const App: React.FC = () => {
       roomCode,
       displayName,
       userId,
-      password,
     });
   };
 
@@ -404,12 +453,18 @@ export const App: React.FC = () => {
 
   return (
     <div className="flex flex-col min-h-screen bg-[#0B0F19] text-gray-100">
+      {/* 0. Initial App Launch Landing / Loading Screen */}
+      {isAppLoading && (
+        <LoadingScreen onLoaded={() => setIsAppLoading(false)} />
+      )}
+
       {/* Global Header (Only on menu/lobby screens, hidden during GAME for full-screen immersion) */}
       {screen !== 'GAME' && (
         <Header
           currentScreen={screen}
           setScreen={setScreen}
           playerDisplayName={displayName}
+          onOpenProfile={() => setIsProfileOpen(true)}
         />
       )}
 
@@ -425,7 +480,8 @@ export const App: React.FC = () => {
               setJoinInitialCode(code || '');
               setIsJoinOpen(true);
             }}
-            onOpenPractice={() => setScreen('PRACTICE')}
+            onOpenPractice={() => setIsSoloSetupOpen(true)}
+            onStartSoloGame={handleStartSolo}
             onOpenLeaderboard={() => setIsLeaderboardOpen(true)}
             onOpenProfile={() => setIsProfileOpen(true)}
             onResumeActiveSession={handleResumeSession}
@@ -470,7 +526,16 @@ export const App: React.FC = () => {
         )}
 
         {screen === 'PRACTICE' && (
-          <PracticeScreen onBack={() => setScreen('HOME')} />
+          <PracticeScreen
+            config={soloConfig}
+            userId={userId}
+            displayName={displayName}
+            onBack={() => setScreen('HOME')}
+            onChangeSettings={() => {
+              setScreen('HOME');
+              setIsSoloSetupOpen(true);
+            }}
+          />
         )}
       </main>
 
@@ -511,6 +576,18 @@ export const App: React.FC = () => {
 
       {isHowToPlayOpen && (
         <HowToPlayModal onClose={() => setIsHowToPlayOpen(false)} />
+      )}
+
+      {isSoloSetupOpen && (
+        <SoloSetupModal
+          onClose={() => setIsSoloSetupOpen(false)}
+          onStartGame={handleStartSolo}
+        />
+      )}
+
+      {/* Welcome Name Setup Modal for First Time Users */}
+      {!isAppLoading && isNameModalOpen && (
+        <WelcomeNameModal onSaveName={handleSaveInitialName} />
       )}
     </div>
   );

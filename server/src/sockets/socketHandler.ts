@@ -19,6 +19,15 @@ export function setupSocketHandlers(io: Server, roomManager: RoomManager) {
     }
   );
 
+  // Automatically persist all completed matches (cleared or expired)
+  roomManager.setOnMatchFinished(async (results, match) => {
+    try {
+      await dbService.saveMatchResults(results, match);
+    } catch (e) {
+      console.error('Failed to save match results:', e);
+    }
+  });
+
   io.on('connection', (socket: Socket) => {
     // 1. Create Room
     socket.on('room:create', (payload: CreateRoomPayload, callback?: (res: unknown) => void) => {

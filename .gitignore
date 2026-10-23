@@ -1,31 +1,47 @@
 # Dependencies
 node_modules/
+**/node_modules/
 .pnp
 .pnp.js
 
-# Build outputs
+# Production build outputs
 dist/
+**/dist/
 build/
+**/build/
 *.tsbuildinfo
 
-# Android generated
+# Android Studio / Gradle generated
 .gradle/
-client/android/.gradle/
-client/android/app/build/
-client/android/build/
-client/android/capacitor-cordova-android-plugins/build/
-client/android/local.properties
+**/android/.gradle/
+**/android/app/build/
+**/android/build/
+**/android/capacitor-cordova-android-plugins/build/
+**/android/local.properties
+.cxx/
+*.iml
 
-# Environment files
+# Environment variables & secrets (preserve .env.example)
 .env
 .env.local
 .env.*.local
+!*.example
 
-# Logs
+# Log files
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+*.log
 
-# OS Files
+# Editor & OS files
+.vscode/
+.idea/
 .DS_Store
 Thumbs.db
+*.swp
+*.swo
+
+# Temporary & system cache
+.system_generated/
+.turbo/
+.cache/

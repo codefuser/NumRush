@@ -104,6 +104,25 @@ app.post('/api/profile/:id', async (req, res) => {
   }
 });
 
+app.post('/api/solo/record', async (req, res) => {
+  try {
+    const { playerId, displayName, score, won, accuracy, avgReactionTimeMs, gameMode } = req.body;
+    const stats = await dbService.recordSoloMatch({
+      playerId,
+      displayName: displayName || 'Hunter',
+      score: score || 0,
+      won: !!won,
+      accuracy: accuracy || 100,
+      avgReactionTimeMs: avgReactionTimeMs || 800,
+      gameMode: gameMode || 'SOLO_PRACTICE',
+    });
+    res.json({ success: true, stats });
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : 'Error recording solo match';
+    res.status(500).json({ success: false, error: errorMsg });
+  }
+});
+
 app.get('/api/leaderboard', async (_req, res) => {
   try {
     const leaderboard = await dbService.getLeaderboard(25);
