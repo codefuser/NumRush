@@ -1,0 +1,20 @@
+{
+  "name": "numrush-monorepo",
+  "version": "1.0.0",
+  "description": "NumRush - Competitive Real-Time Multiplayer Number Hunt",
+  "scripts": {
+    "install:all": "npm install && cd server && npm install && cd ../client && npm install",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "dev": "node -e \"const { spawn } = require('child_process'); spawn('npm', ['run', 'dev:server'], { stdio: 'inherit', shell: true }); spawn('npm', ['run', 'dev:client'], { stdio: 'inherit', shell: true });\"",
+    "build:server": "cd server && npm run build",
+    "build:client": "cd client && npm run build",
+    "build": "npm run build:server && npm run build:client",
+    "test": "cd server && npm run test",
+    "android:sync": "cd client && npm run build && npx cap sync android",
+    "android:apk": "cd client/android && .\\gradlew.bat assembleDebug"
+  },
+  "keywords": ["multiplayer", "game", "realtime", "socket.io", "react", "capacitor", "android"],
+  "author": "NumRush Team",
+  "license": "MIT"
+}
