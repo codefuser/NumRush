@@ -80,21 +80,18 @@ Play at: ${window.location.origin}`;
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
+    <div className="max-w-3xl mx-auto px-2 sm:px-4 py-4 space-y-4">
       {/* 1. Winner Celebration Banner */}
-      <div className="glass-panel-glow rounded-3xl p-8 text-center relative overflow-hidden mb-8">
-        <div className="absolute -top-24 -left-24 w-48 h-48 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
-
-        <div className="inline-flex items-center justify-center p-4 rounded-3xl bg-amber-500/20 border-2 border-amber-400 text-amber-400 mb-4 shadow-[0_0_30px_rgba(245,158,11,0.5)] animate-bounce">
-          <Crown className="w-10 h-10 fill-amber-400" />
+      <div className="bg-[#0F172A] border border-cyan-500/30 rounded-2xl sm:rounded-3xl p-5 sm:p-8 text-center relative overflow-hidden shadow-xl">
+        <div className="inline-flex items-center justify-center p-3 rounded-2xl bg-amber-500/20 border border-amber-400 text-amber-400 mb-3 shadow-lg">
+          <Crown className="w-8 h-8 fill-amber-400" />
         </div>
 
-        <h1 className="font-display font-black text-4xl sm:text-5xl text-white mb-2">
+        <h1 className="font-display font-black text-2xl sm:text-4xl text-white mb-1.5">
           {results.isTie ? (
             <span className="text-amber-300">It's a Tie!</span>
           ) : isWinner ? (
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-yellow-400 to-orange-400">
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-orange-400">
               VICTORY! YOU WON!
             </span>
           ) : (
@@ -104,31 +101,28 @@ Play at: ${window.location.origin}`;
           )}
         </h1>
 
-        <p className="text-sm text-gray-300 max-w-lg mx-auto">
+        <p className="text-xs text-gray-300 max-w-sm mx-auto">
           {results.winner
-            ? `Top hunter claimed ${results.winner.score} points with ${results.winner.accuracy}% accuracy.`
+            ? `Winner scored ${results.winner.score} pts with ${results.winner.accuracy}% accuracy.`
             : 'Match completed with equal scores.'}
         </p>
 
         {/* Match Quick Specs */}
-        <div className="flex flex-wrap items-center justify-center gap-4 mt-6 text-xs font-mono text-gray-400">
-          <span className="px-3 py-1 rounded-full bg-black/40 border border-gray-800">
+        <div className="flex flex-wrap items-center justify-center gap-2 mt-4 text-[10px] font-mono text-gray-400">
+          <span className="px-2.5 py-0.5 rounded-full bg-black/50 border border-gray-800">
             Duration: {results.durationSeconds}s
           </span>
-          <span className="px-3 py-1 rounded-full bg-black/40 border border-gray-800">
+          <span className="px-2.5 py-0.5 rounded-full bg-black/50 border border-gray-800">
             Claimed: {results.claimedNumbers} / {results.totalNumbers}
-          </span>
-          <span className="px-3 py-1 rounded-full bg-black/40 border border-gray-800">
-            ID: {results.matchId.slice(0, 8)}
           </span>
         </div>
       </div>
 
       {/* 2. Final Standings Table */}
-      <div className="glass-panel rounded-3xl p-6 sm:p-8 mb-8 overflow-x-auto">
-        <h2 className="font-display font-bold text-xl text-white mb-4 flex items-center gap-2">
-          <Trophy className="w-5 h-5 text-amber-400" />
-          Final Leaderboard & Statistics
+      <div className="bg-[#0F172A] border border-gray-800 rounded-2xl p-4 sm:p-6 overflow-x-auto">
+        <h2 className="font-display font-bold text-base text-white mb-3 flex items-center gap-2">
+          <Trophy className="w-4 h-4 text-amber-400" />
+          Final Leaderboard
         </h2>
 
         <table className="w-full text-left text-xs sm:text-sm">

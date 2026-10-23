@@ -2,19 +2,13 @@ import React, { useState, useEffect } from 'react';
 import {
   Plus,
   LogIn,
-  Gamepad2,
   Trophy,
-  HelpCircle,
-  Play,
   RotateCcw,
   Users,
-  Clock,
-  Sparkles,
-  Zap,
   Target,
   Edit2,
   Check,
-  Flame,
+  Sparkles,
 } from 'lucide-react';
 import { socketService } from '../services/socket.js';
 import type { ActiveSessionData } from '../services/socket.js';
@@ -51,16 +45,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const [tempName, setTempName] = useState(displayName);
 
   useEffect(() => {
-    // Check local storage for active game session
     const session = socketService.getActiveSession();
     setActiveSession(session);
 
-    // Fetch user stats
     api.getProfile(userId).then((stats) => {
       if (stats) setPlayerStats(stats);
     });
 
-    // Fetch open public rooms
     api.getActiveRooms().then((res) => {
       if (res && res.rooms) setPublicRooms(res.rooms);
     });
@@ -80,249 +71,215 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       : 0;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
-      {/* 1. Hero Banner */}
-      <div className="relative rounded-3xl overflow-hidden glass-panel-glow p-8 sm:p-12 text-center sm:text-left border border-cyan-500/30">
-        <div className="relative z-10 flex flex-col sm:flex-row items-center justify-between gap-8">
-          <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-mono mb-4">
-              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Real-Time Multiplayer Visual-Memory Competition</span>
+    <div className="w-full max-w-4xl mx-auto px-3 sm:px-6 py-4 space-y-4">
+      {/* 1. Mobile Game Hero Banner */}
+      <div className="rounded-2xl sm:rounded-3xl bg-gradient-to-br from-[#111c33] via-[#0d1527] to-[#0B0F19] p-4 sm:p-6 border border-cyan-500/30 shadow-xl">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="w-full text-center sm:text-left">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-[11px] font-mono mb-2">
+              <Sparkles className="w-3 h-3 text-cyan-400" />
+              <span>Multiplayer Visual-Memory Hunt</span>
             </div>
 
-            <h1 className="font-display font-black text-4xl sm:text-6xl text-white tracking-tight leading-none mb-4">
-              SPOT. MEMORIZE.{' '}
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-sky-400 to-purple-500">
+            <h1 className="font-display font-black text-2xl sm:text-4xl text-white tracking-tight leading-tight">
+              SPOT.{' '}
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-sky-400 to-purple-400">
                 STRIKE FIRST.
               </span>
             </h1>
 
-            <p className="text-sm sm:text-base text-gray-300 max-w-xl">
-              Race sequential numbers in a shared shuffled grid. The fastest eye and sharpest memory wins every target.
+            <p className="text-xs text-gray-300 mt-1 max-w-md mx-auto sm:mx-0">
+              Find sequential numbers in a shared shuffled grid. First player to spot each target gets the point!
             </p>
 
-            {/* Main Action Buttons in Hero */}
-            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 mt-8">
+            {/* Quick Play Action Buttons */}
+            <div className="grid grid-cols-2 gap-2 mt-4">
               <button
                 onClick={onOpenCreateModal}
-                className="px-8 py-4 rounded-2xl font-display font-extrabold text-base text-black bg-gradient-to-r from-cyan-400 via-sky-400 to-purple-400 hover:opacity-95 shadow-[0_0_25px_rgba(0,240,255,0.4)] transition-all tap-effect flex items-center gap-2"
+                className="py-3 px-3 rounded-xl font-display font-black text-xs sm:text-sm text-black bg-gradient-to-r from-cyan-400 to-purple-400 hover:opacity-95 shadow-md flex items-center justify-center gap-1.5 tap-effect"
               >
-                <Plus className="w-5 h-5 stroke-[2.5]" />
-                Create New Match
+                <Plus className="w-4 h-4 stroke-[3]" />
+                Create Match
               </button>
 
               <button
                 onClick={() => onOpenJoinModal()}
-                className="px-8 py-4 rounded-2xl font-display font-extrabold text-base text-white bg-surface-light hover:bg-gray-700/80 border border-gray-700 hover:border-cyan-400 transition-all tap-effect flex items-center gap-2"
+                className="py-3 px-3 rounded-xl font-display font-black text-xs sm:text-sm text-white bg-gray-800/80 hover:bg-gray-800 border border-gray-700 hover:border-cyan-400 flex items-center justify-center gap-1.5 tap-effect"
               >
-                <LogIn className="w-5 h-5 text-cyan-400" />
+                <LogIn className="w-4 h-4 text-cyan-400" />
                 Join Room
               </button>
-            </div>
-          </div>
-
-          {/* Graphic Icon Artwork */}
-          <div className="hidden lg:flex flex-col items-center justify-center">
-            <div className="w-48 h-48 rounded-3xl bg-gradient-to-br from-cyan-500/20 via-purple-500/10 to-transparent p-6 border border-cyan-500/30 shadow-[0_0_50px_rgba(0,240,255,0.2)] flex items-center justify-center">
-              <img src="/logo.svg" alt="NumRush" className="w-36 h-36 drop-shadow-[0_0_20px_rgba(0,240,255,0.8)] animate-pulse-glow" />
             </div>
           </div>
         </div>
       </div>
 
-      {/* 2. Active Session Banner (if existing room) */}
+      {/* 2. Active Session Card (If reconnecting) */}
       {activeSession && (
-        <div className="p-5 rounded-2xl bg-gradient-to-r from-amber-500/20 via-orange-500/15 to-purple-500/20 border-2 border-amber-400/80 shadow-[0_0_25px_rgba(245,158,11,0.25)] flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3.5">
-            <div className="p-3 rounded-xl bg-amber-500/30 text-amber-300">
-              <RotateCcw className="w-6 h-6 animate-spin-slow" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-display font-bold text-lg text-white">
-                  Active Match Detected: {activeSession.roomCode}
-                </span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                  RECONNECT READY
-                </span>
+        <div className="p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/60 shadow-lg flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <RotateCcw className="w-5 h-5 text-amber-400 flex-shrink-0 animate-spin-slow" />
+            <div className="truncate">
+              <div className="font-bold text-xs text-white truncate">
+                Active Room: {activeSession.roomCode}
               </div>
-              <p className="text-xs text-amber-200/80 mt-0.5">
-                You were participating in this room. Click below to reconnect and restore your grid.
-              </p>
+              <span className="text-[10px] text-amber-200/80">Click to resume gameplay</span>
             </div>
           </div>
 
           <button
             onClick={() => onResumeActiveSession(activeSession)}
-            className="w-full sm:w-auto px-6 py-2.5 rounded-xl font-display font-bold text-sm text-black bg-amber-400 hover:bg-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.4)] transition-all tap-effect"
+            className="px-4 py-2 rounded-xl font-display font-bold text-xs text-black bg-amber-400 hover:bg-amber-300 flex-shrink-0 tap-effect"
           >
-            Resume Room
+            Resume
           </button>
         </div>
       )}
 
-      {/* 3. Player Summary Card & Quick Actions Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left: Player Profile Summary */}
-        <div className="glass-panel rounded-3xl p-6 border border-gray-800">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-xs uppercase font-mono text-cyan-400 tracking-wider">
-              Hunter Profile
-            </span>
+      {/* 3. Player Stats & Practice Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {/* Profile Stats Quick Card */}
+        <div className="p-4 rounded-2xl bg-[#0F172A] border border-gray-800">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[10px] uppercase font-mono text-cyan-400">Hunter Profile</span>
             <button
               onClick={onOpenProfile}
-              className="text-xs text-gray-400 hover:text-white transition-colors"
+              className="text-[11px] text-gray-400 hover:text-white"
             >
-              View Full →
+              Stats →
             </button>
           </div>
 
-          <div className="flex items-center gap-4 mb-6">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-400 to-purple-600 flex items-center justify-center font-display font-black text-2xl text-black shadow-md flex-shrink-0">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-400 to-purple-600 flex items-center justify-center font-display font-black text-lg text-black flex-shrink-0">
               {displayName.slice(0, 2).toUpperCase()}
             </div>
 
             <div className="flex-1 min-w-0">
               {isEditingName ? (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <input
                     type="text"
                     value={tempName}
                     maxLength={20}
                     onChange={(e) => setTempName(e.target.value)}
-                    className="w-full bg-black/60 border border-cyan-400 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none"
+                    className="w-full bg-black/60 border border-cyan-400 rounded-lg px-2 py-0.5 text-xs text-white focus:outline-none"
                     autoFocus
                   />
                   <button
                     onClick={handleSaveName}
-                    className="p-1.5 rounded-lg bg-cyan-400 text-black hover:bg-cyan-300"
+                    className="p-1 rounded-lg bg-cyan-400 text-black hover:bg-cyan-300"
                   >
                     <Check className="w-3.5 h-3.5" />
                   </button>
                 </div>
               ) : (
-                <div className="flex items-center gap-2">
-                  <span className="font-display font-bold text-xl text-white truncate">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-display font-bold text-sm text-white truncate">
                     {displayName}
                   </span>
                   <button
                     onClick={() => setIsEditingName(true)}
                     className="text-gray-500 hover:text-cyan-400"
                   >
-                    <Edit2 className="w-3.5 h-3.5" />
+                    <Edit2 className="w-3 h-3" />
                   </button>
                 </div>
               )}
-              <span className="text-xs text-gray-400 font-mono">
-                {playerStats?.totalMatches ?? 0} Total Games
+              <span className="text-[10px] text-gray-400 font-mono">
+                {playerStats?.totalMatches ?? 0} Games Played
               </span>
             </div>
           </div>
 
-          {/* Quick Metrics */}
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <div className="p-2.5 rounded-xl bg-surface-light/40 border border-gray-800/80">
-              <span className="text-[10px] text-gray-400 uppercase font-mono block">Wins</span>
-              <span className="font-display font-bold text-base text-amber-300">
+          <div className="grid grid-cols-3 gap-1.5 text-center">
+            <div className="p-1.5 rounded-lg bg-gray-900/60 border border-gray-800">
+              <span className="text-[9px] text-gray-400 uppercase font-mono block">Wins</span>
+              <span className="font-display font-bold text-xs text-amber-300">
                 {playerStats?.wins ?? 0}
               </span>
             </div>
 
-            <div className="p-2.5 rounded-xl bg-surface-light/40 border border-gray-800/80">
-              <span className="text-[10px] text-gray-400 uppercase font-mono block">Win Rate</span>
-              <span className="font-display font-bold text-base text-cyan-400">
+            <div className="p-1.5 rounded-lg bg-gray-900/60 border border-gray-800">
+              <span className="text-[9px] text-gray-400 uppercase font-mono block">Win Rate</span>
+              <span className="font-display font-bold text-xs text-cyan-400">
                 {winRate}%
               </span>
             </div>
 
-            <div className="p-2.5 rounded-xl bg-surface-light/40 border border-gray-800/80">
-              <span className="text-[10px] text-gray-400 uppercase font-mono block">Best Pts</span>
-              <span className="font-display font-bold text-base text-purple-300">
+            <div className="p-1.5 rounded-lg bg-gray-900/60 border border-gray-800">
+              <span className="text-[9px] text-gray-400 uppercase font-mono block">Best Pts</span>
+              <span className="font-display font-bold text-xs text-purple-300">
                 {playerStats?.bestScore ?? 0}
               </span>
             </div>
           </div>
         </div>
 
-        {/* Center & Right: Feature Action Cards */}
-        <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {/* Practice Mode Card */}
-          <div
-            onClick={onOpenPractice}
-            className="p-6 rounded-3xl glass-panel border border-gray-800 hover:border-cyan-500/50 hover:shadow-[0_0_20px_rgba(0,240,255,0.15)] transition-all cursor-pointer group tap-effect"
-          >
-            <div className="p-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 w-fit mb-4 group-hover:scale-110 transition-transform">
-              <Target className="w-6 h-6" />
+        {/* Solo Practice Mode Card */}
+        <div
+          onClick={onOpenPractice}
+          className="p-4 rounded-2xl bg-[#0F172A] border border-gray-800 hover:border-cyan-500/40 cursor-pointer flex flex-col justify-between tap-effect"
+        >
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Target className="w-4 h-4 text-cyan-400" />
+                <h3 className="font-display font-bold text-sm text-white">Solo Practice</h3>
+              </div>
+              <span className="text-[10px] font-mono text-cyan-300 bg-cyan-950 px-2 py-0.5 rounded-full border border-cyan-800">
+                OFFLINE
+              </span>
             </div>
-            <h3 className="font-display font-bold text-xl text-white mb-1">
-              Practice Solo Mode
-            </h3>
             <p className="text-xs text-gray-400">
-              Train your scanning speed and peripheral visual memory with flexible range sizes.
+              Train your eyes and memory speed solo before entering multiplayer rooms.
             </p>
           </div>
 
-          {/* Global Leaderboard Card */}
-          <div
-            onClick={onOpenLeaderboard}
-            className="p-6 rounded-3xl glass-panel border border-gray-800 hover:border-amber-500/50 hover:shadow-[0_0_20px_rgba(245,158,11,0.15)] transition-all cursor-pointer group tap-effect"
-          >
-            <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 w-fit mb-4 group-hover:scale-110 transition-transform">
-              <Trophy className="w-6 h-6" />
-            </div>
-            <h3 className="font-display font-bold text-xl text-white mb-1">
-              Hall of Fame
-            </h3>
-            <p className="text-xs text-gray-400">
-              Check out world rankings, top player win rates, and highest scores.
-            </p>
+          <div className="mt-3 flex items-center justify-between pt-2 border-t border-gray-800 text-xs text-cyan-400 font-semibold">
+            <span>Play Practice Mode</span>
+            <span>→</span>
           </div>
         </div>
       </div>
 
-      {/* 4. Open Public Rooms Browser */}
-      <div className="glass-panel rounded-3xl p-6 sm:p-8 border border-gray-800">
-        <div className="flex items-center justify-between mb-6">
+      {/* 4. Open Public Lobbies */}
+      <div className="p-4 rounded-2xl bg-[#0F172A] border border-gray-800">
+        <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <Users className="w-5 h-5 text-cyan-400" />
-            <h2 className="font-display font-bold text-xl text-white">Open Matchmaking Rooms</h2>
+            <Users className="w-4 h-4 text-cyan-400" />
+            <h2 className="font-display font-bold text-sm text-white">Open Rooms</h2>
           </div>
-          <span className="text-xs text-gray-400 font-mono">
-            {publicRooms.length} {publicRooms.length === 1 ? 'room' : 'rooms'} active
+          <span className="text-[10px] text-gray-400 font-mono">
+            {publicRooms.length} available
           </span>
         </div>
 
         {publicRooms.length === 0 ? (
-          <div className="py-8 text-center text-xs text-gray-400">
-            No public rooms currently waiting. Click <strong>Create New Match</strong> above to host one!
+          <div className="py-4 text-center text-xs text-gray-500">
+            No open public rooms. Click <strong>Create Match</strong> to host one!
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {publicRooms.map((room) => (
               <div
                 key={room.id}
-                className="p-4 rounded-2xl bg-surface-light/40 border border-gray-800 hover:border-cyan-500/40 transition-all flex flex-col justify-between"
+                className="p-3 rounded-xl bg-gray-900/60 border border-gray-800 flex items-center justify-between"
               >
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-display font-bold text-sm text-cyan-300">
-                      {room.roomCode}
-                    </span>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800">
-                      {room.playerCount}/{room.playerLimit} Players
-                    </span>
+                  <div className="font-display font-bold text-xs text-cyan-300">
+                    {room.roomCode}
                   </div>
-                  <div className="text-xs text-gray-400 space-y-1">
-                    <div>Range: 1–{room.numberRange.max}</div>
-                    <div>Mode: {room.gameMode === 'TIME_CHALLENGE' ? 'Time Challenge' : 'Complete Grid'}</div>
+                  <div className="text-[10px] text-gray-400 font-mono">
+                    1–{room.numberRange.max} • {room.playerCount}/{room.playerLimit} Players
                   </div>
                 </div>
 
                 <button
                   onClick={() => onOpenJoinModal(room.roomCode)}
-                  className="mt-4 w-full py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-semibold transition-colors tap-effect"
+                  className="px-3 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-semibold tap-effect"
                 >
-                  Join Match
+                  Join
                 </button>
               </div>
             ))}

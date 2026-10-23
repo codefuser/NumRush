@@ -60,74 +60,67 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
   const canStart = isHost && connectedPlayers.length >= 1 && unreadyPlayers.length === 0;
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
+    <div className="max-w-3xl mx-auto px-2 sm:px-4 py-3 space-y-3 sm:space-y-4">
       {/* Room Header Card */}
-      <div className="glass-panel-glow rounded-3xl p-6 sm:p-8 mb-6 relative overflow-hidden">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <div className="bg-[#0F172A] border border-cyan-500/30 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xl relative overflow-hidden">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
           <div>
-            <div className="flex items-center gap-2 text-cyan-400 font-mono text-xs uppercase tracking-widest mb-1">
-              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-              Multiplayer Lobby
+            <div className="flex items-center gap-1.5 text-cyan-400 font-mono text-[10px] uppercase tracking-widest mb-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+              Lobby Waiting
             </div>
-            <h1 className="font-display font-black text-3xl sm:text-4xl text-white tracking-wider">
+            <h1 className="font-display font-black text-2xl sm:text-3xl text-white tracking-wider">
               ROOM: <span className="text-cyan-400">{room.roomCode}</span>
             </h1>
-            <p className="text-xs sm:text-sm text-gray-400 mt-1">
-              Share the code or link with friends to join the match.
-            </p>
           </div>
 
           {/* Action buttons: Copy Code & Link */}
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2">
             <button
               onClick={copyCode}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-surface-light border border-gray-700 hover:border-cyan-400 text-xs font-semibold text-gray-200 hover:text-white transition-all tap-effect"
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-xs font-semibold text-gray-200 transition-all tap-effect"
             >
-              {copiedCode ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4 text-cyan-400" />}
-              {copiedCode ? 'Copied Code!' : 'Copy Code'}
+              {copiedCode ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-cyan-400" />}
+              {copiedCode ? 'Copied!' : 'Copy Code'}
             </button>
 
             <button
               onClick={copyLink}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/40 hover:bg-cyan-500/20 text-xs font-semibold text-cyan-300 transition-all tap-effect"
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/40 text-xs font-semibold text-cyan-300 transition-all tap-effect"
             >
-              {copiedLink ? <Check className="w-4 h-4 text-emerald-400" /> : <Share2 className="w-4 h-4" />}
-              {copiedLink ? 'Link Copied!' : 'Share Invite Link'}
+              {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Share2 className="w-3.5 h-3.5" />}
+              {copiedLink ? 'Copied!' : 'Share Link'}
             </button>
           </div>
         </div>
 
         {/* Room Settings Overview Bar */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-6 border-t border-gray-800/80 text-xs">
-          <div className="p-2.5 rounded-xl bg-black/40 border border-gray-800">
-            <span className="text-gray-400 block text-[10px] uppercase font-mono">Numbers</span>
-            <span className="font-display font-bold text-gray-100">
-              {room.settings.numberRange.min} – {room.settings.numberRange.max} ({room.settings.numberRange.max - room.settings.numberRange.min + 1} tiles)
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4 pt-3 border-t border-gray-800 text-xs">
+          <div className="p-2 rounded-xl bg-black/40 border border-gray-800">
+            <span className="text-gray-400 block text-[9px] uppercase font-mono">Numbers</span>
+            <span className="font-display font-bold text-xs text-gray-100">
+              1 – {room.settings.numberRange.max} ({room.settings.numberRange.max - room.settings.numberRange.min + 1} tiles)
             </span>
           </div>
 
-          <div className="p-2.5 rounded-xl bg-black/40 border border-gray-800">
-            <span className="text-gray-400 block text-[10px] uppercase font-mono">Mode</span>
-            <span className="font-display font-bold text-gray-100">
+          <div className="p-2 rounded-xl bg-black/40 border border-gray-800">
+            <span className="text-gray-400 block text-[9px] uppercase font-mono">Mode</span>
+            <span className="font-display font-bold text-xs text-gray-100">
               {room.settings.gameMode === 'TIME_CHALLENGE' ? 'Time Challenge' : 'Complete Grid'}
             </span>
           </div>
 
-          <div className="p-2.5 rounded-xl bg-black/40 border border-gray-800">
-            <span className="text-gray-400 block text-[10px] uppercase font-mono">Time Limit</span>
-            <span className="font-display font-bold text-gray-100">
-              {Math.round(room.settings.durationSeconds / 60)} Minutes
+          <div className="p-2 rounded-xl bg-black/40 border border-gray-800">
+            <span className="text-gray-400 block text-[9px] uppercase font-mono">Limit</span>
+            <span className="font-display font-bold text-xs text-gray-100">
+              {Math.round(room.settings.durationSeconds / 60)} Mins
             </span>
           </div>
 
-          <div className="p-2.5 rounded-xl bg-black/40 border border-gray-800">
-            <span className="text-gray-400 block text-[10px] uppercase font-mono">Penalty</span>
-            <span className="font-display font-bold text-gray-100">
-              {room.settings.wrongClickPenalty === 'NONE'
-                ? 'None'
-                : room.settings.wrongClickPenalty === 'SCORE'
-                ? '-1 Score'
-                : 'Lockout'}
+          <div className="p-2 rounded-xl bg-black/40 border border-gray-800">
+            <span className="text-gray-400 block text-[9px] uppercase font-mono">Penalty</span>
+            <span className="font-display font-bold text-xs text-gray-100">
+              {room.settings.wrongClickPenalty === 'NONE' ? 'Off' : '-1 Pt'}
             </span>
           </div>
         </div>

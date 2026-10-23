@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Header } from './components/Header.js';
-import { Footer } from './components/Footer.js';
 import { HomeScreen } from './components/HomeScreen.js';
 import { LobbyScreen } from './components/LobbyScreen.js';
 import { GameScreen } from './components/GameScreen.js';
@@ -474,11 +473,6 @@ export const App: React.FC = () => {
           <PracticeScreen onBack={() => setScreen('HOME')} />
         )}
       </main>
-
-      {/* Global Footer */}
-      {screen !== 'GAME' && (
-        <Footer onOpenHowToPlay={() => setIsHowToPlayOpen(true)} />
-      )}
 
       {/* Modal Dialogs */}
       {isCreateOpen && (
