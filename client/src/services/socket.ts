@@ -1,17 +1,19 @@
 import { io, Socket } from 'socket.io-client';
 
 // Determine backend URL:
-// In Capacitor / mobile: VITE_BACKEND_URL or LAN address
-// In Web: VITE_BACKEND_URL or current host with port 3001
+// Uses VITE_BACKEND_URL if specified, otherwise connects to live production Render server
 const getBackendUrl = (): string => {
   if (import.meta.env.VITE_BACKEND_URL) {
     return import.meta.env.VITE_BACKEND_URL;
   }
   if (typeof window !== 'undefined') {
-    const host = window.location.hostname || 'localhost';
-    return `http://${host}:3001`;
+    // Local development Vite server only
+    if (window.location.hostname === 'localhost' && window.location.port === '5173') {
+      return 'http://localhost:3001';
+    }
   }
-  return 'http://localhost:3001';
+  // Live Production Backend URL on Render
+  return 'https://numrush-server.onrender.com';
 };
 
 export const BACKEND_URL = getBackendUrl();
