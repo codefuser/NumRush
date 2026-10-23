@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Sliders, Users, Clock, ShieldAlert, Sparkles, Check, ChevronRight } from 'lucide-react';
-import { RoomSettings, GameMode, WrongClickPenalty } from '../types/index.js';
+import type { RoomSettings, GameMode, WrongClickPenalty } from '../types/index.js';
 
 interface CreateGameModalProps {
   onClose: () => void;

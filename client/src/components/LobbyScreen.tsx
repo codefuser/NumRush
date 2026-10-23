@@ -13,7 +13,7 @@ import {
   UserX,
   AlertTriangle,
 } from 'lucide-react';
-import { RoomState, Player } from '../types/index.js';
+import type { RoomState, Player } from '../types/index.js';
 
 interface LobbyScreenProps {
   room: RoomState;

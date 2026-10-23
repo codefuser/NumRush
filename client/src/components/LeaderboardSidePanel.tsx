@@ -1,6 +1,6 @@
 import React from 'react';
 import { Trophy, Crown, Target, Zap, WifiOff } from 'lucide-react';
-import { Player, MatchState } from '../types/index.js';
+import type { Player, MatchState } from '../types/index.js';
 
 interface LeaderboardSidePanelProps {
   players: Record<string, Player>;

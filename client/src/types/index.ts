@@ -1,14 +1,17 @@
-export type Screen =
-  | 'HOME'
-  | 'CREATE'
-  | 'JOIN'
-  | 'LOBBY'
-  | 'GAME'
-  | 'RESULTS'
-  | 'PRACTICE'
-  | 'LEADERBOARD'
-  | 'PROFILE'
-  | 'HOW_TO_PLAY';
+export const SCREENS = {
+  HOME: 'HOME',
+  CREATE: 'CREATE',
+  JOIN: 'JOIN',
+  LOBBY: 'LOBBY',
+  GAME: 'GAME',
+  RESULTS: 'RESULTS',
+  PRACTICE: 'PRACTICE',
+  LEADERBOARD: 'LEADERBOARD',
+  PROFILE: 'PROFILE',
+  HOW_TO_PLAY: 'HOW_TO_PLAY',
+} as const;
+
+export type Screen = (typeof SCREENS)[keyof typeof SCREENS];
 
 export type GameMode = 'TIME_CHALLENGE' | 'COMPLETE_GRID';
 export type WrongClickPenalty = 'NONE' | 'TIME' | 'SCORE';

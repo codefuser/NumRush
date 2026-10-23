@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X, Trophy, Crown, Medal, Flame } from 'lucide-react';
 import { api } from '../services/api.js';
-import { PersistentPlayerStats } from '../types/index.js';
+import type { PersistentPlayerStats } from '../types/index.js';
 
 interface LeaderboardModalProps {
   onClose: () => void;

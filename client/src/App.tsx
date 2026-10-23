@@ -11,9 +11,10 @@ import { JoinGameModal } from './components/JoinGameModal.js';
 import { LeaderboardModal } from './components/LeaderboardModal.js';
 import { ProfileModal } from './components/ProfileModal.js';
 import { HowToPlayModal } from './components/HowToPlayModal.js';
-import { socketService, ActiveSessionData } from './services/socket.js';
+import { socketService } from './services/socket.js';
+import type { ActiveSessionData } from './services/socket.js';
 import { soundManager } from './services/audio.js';
-import {
+import type {
   Screen,
   RoomState,
   MatchState,
@@ -404,12 +405,14 @@ export const App: React.FC = () => {
 
   return (
     <div className="flex flex-col min-h-screen bg-[#0B0F19] text-gray-100">
-      {/* Global Header */}
-      <Header
-        currentScreen={screen}
-        setScreen={setScreen}
-        playerDisplayName={displayName}
-      />
+      {/* Global Header (Only on menu/lobby screens, hidden during GAME for full-screen immersion) */}
+      {screen !== 'GAME' && (
+        <Header
+          currentScreen={screen}
+          setScreen={setScreen}
+          playerDisplayName={displayName}
+        />
+      )}
 
       {/* Main Body Content based on screen */}
       <main className="flex-1 flex flex-col">
@@ -449,6 +452,7 @@ export const App: React.FC = () => {
             countdownRemaining={countdownRemaining}
             serverRemainingSeconds={serverRemainingSeconds}
             onClaimNumber={handleClaimNumber}
+            onLeaveRoom={handleLeaveRoom}
           />
         )}
 

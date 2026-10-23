@@ -193,9 +193,7 @@ export const PracticeScreen: React.FC<PracticeScreenProps> = ({ onBack }) => {
                   className={`aspect-square rounded-xl font-display font-bold text-base sm:text-lg flex items-center justify-center transition-all tap-effect ${
                     isClaimed
                       ? 'bg-emerald-950/60 border-2 border-emerald-500 text-emerald-300 opacity-70 line-through'
-                      : isTarget
-                      ? 'bg-amber-500/20 border-2 border-amber-400 text-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.5)] animate-pulse'
-                      : 'bg-surface-light/60 border border-gray-800 text-gray-200 hover:border-cyan-500/50 hover:text-cyan-300'
+                      : 'bg-[#161f30] hover:bg-[#1e2a40] border border-slate-800 text-gray-200 hover:border-cyan-500/50 hover:text-cyan-300'
                   }`}
                 >
                   {num}

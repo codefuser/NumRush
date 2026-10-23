@@ -16,9 +16,10 @@ import {
   Check,
   Flame,
 } from 'lucide-react';
-import { ActiveSessionData, socketService } from '../services/socket.js';
+import { socketService } from '../services/socket.js';
+import type { ActiveSessionData } from '../services/socket.js';
 import { api } from '../services/api.js';
-import { PersistentPlayerStats } from '../types/index.js';
+import type { PersistentPlayerStats } from '../types/index.js';
 
 interface HomeScreenProps {
   displayName: string;

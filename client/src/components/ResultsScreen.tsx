@@ -13,7 +13,7 @@ import {
   Clock,
   Sparkles,
 } from 'lucide-react';
-import { MatchResults, RoomState } from '../types/index.js';
+import type { MatchResults, RoomState } from '../types/index.js';
 import { soundManager } from '../services/audio.js';
 
 interface ResultsScreenProps {

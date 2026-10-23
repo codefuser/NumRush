@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, User, Trophy, Zap, Target, History, Edit2, Check, Award } from 'lucide-react';
 import { api } from '../services/api.js';
-import { PersistentPlayerStats } from '../types/index.js';
+import type { PersistentPlayerStats } from '../types/index.js';
 
 interface ProfileModalProps {
   userId: string;
