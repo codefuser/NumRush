@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Volume2, VolumeX } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Volume2, VolumeX, Maximize, Minimize } from 'lucide-react';
 import { soundManager } from '../services/audio.js';
 import type { Screen } from '../types/index.js';
 
@@ -12,10 +12,27 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ setScreen, playerDisplayName, onOpenProfile }) => {
   const [isMuted, setIsMuted] = useState(soundManager.isMuted());
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(() => !!document.fullscreenElement);
+
+  useEffect(() => {
+    const handleFsChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', handleFsChange);
+    return () => document.removeEventListener('fullscreenchange', handleFsChange);
+  }, []);
 
   const toggleSound = () => {
     const muted = soundManager.toggleMute();
     setIsMuted(muted);
+  };
+
+  const toggleFullscreen = () => {
+    try {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    } catch {}
   };
 
   return (
@@ -35,8 +52,18 @@ export const Header: React.FC<HeaderProps> = ({ setScreen, playerDisplayName, on
         </span>
       </div>
 
-      {/* Right Actions: Sound & Profile Avatar */}
-      <div className="flex items-center gap-2.5">
+      {/* Right Actions: Fullscreen, Sound & Profile Avatar */}
+      <div className="flex items-center gap-2">
+        {/* Fullscreen Button */}
+        <button
+          onClick={toggleFullscreen}
+          title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen (Hide Browser URL Bar)'}
+          className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 border border-gray-800 text-gray-300 hover:text-white transition-all active:scale-95 cursor-pointer"
+          aria-label="Fullscreen Toggle"
+        >
+          {isFullscreen ? <Minimize className="w-4 h-4 text-cyan-400" /> : <Maximize className="w-4 h-4 text-gray-300" />}
+        </button>
+
         {/* Sound Toggle Button */}
         <button
           onClick={toggleSound}

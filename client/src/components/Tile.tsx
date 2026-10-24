@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { Check } from 'lucide-react';
 import type { ClaimRecord } from '../types/index.js';
+import { GRID_MODELS, GridModelId } from '../services/gridTheme.js';
 
 interface TileProps {
   number: number;
@@ -8,32 +9,52 @@ interface TileProps {
   disabled: boolean;
   onClaim: (number: number) => void;
   isMasked?: boolean;
+  gridModelId?: GridModelId;
 }
 
 export const Tile: React.FC<TileProps> = React.memo(
-  ({ number, claim, disabled, onClaim, isMasked }) => {
+  ({ number, claim, disabled, onClaim, isMasked, gridModelId = 'cyber' }) => {
     const [isWrong, setIsWrong] = useState(false);
-    const pointerStartRef = React.useRef<{ x: number; y: number } | null>(null);
+    const pointerStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+    const lastTapTimeRef = useRef<number>(0);
+
+    const model = GRID_MODELS[gridModelId] || GRID_MODELS.cyber;
 
     const handlePointerDown = (e: React.PointerEvent) => {
-      pointerStartRef.current = { x: e.clientX, y: e.clientY };
+      // Record pointer position and time
+      pointerStartRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        time: Date.now(),
+      };
+    };
+
+    const attemptClaim = useCallback(() => {
+      if (disabled || claim || isMasked) return;
+      const now = Date.now();
+      // Debounce accidental double fires within 150ms
+      if (now - lastTapTimeRef.current < 150) return;
+      lastTapTimeRef.current = now;
+
+      onClaim(number);
+    }, [disabled, claim, isMasked, number, onClaim]);
+
+    const handlePointerUp = (e: React.PointerEvent) => {
+      if (!pointerStartRef.current) return;
+      const dx = Math.abs(e.clientX - pointerStartRef.current.x);
+      const dy = Math.abs(e.clientY - pointerStartRef.current.y);
+      const dt = Date.now() - pointerStartRef.current.time;
+      pointerStartRef.current = null;
+
+      // Generous tap distance (up to 22px movement and under 600ms is a clean tap)
+      if (dx <= 22 && dy <= 22 && dt < 600) {
+        attemptClaim();
+      }
     };
 
     const handleClick = (e: React.MouseEvent) => {
       e.stopPropagation();
-      if (disabled || claim || isMasked) return;
-
-      // If pointer moved more than 18px during this gesture, it was a drag/pan
-      if (pointerStartRef.current) {
-        const dx = Math.abs(e.clientX - pointerStartRef.current.x);
-        const dy = Math.abs(e.clientY - pointerStartRef.current.y);
-        pointerStartRef.current = null;
-        if (dx > 18 || dy > 18) {
-          return;
-        }
-      }
-
-      onClaim(number);
+      attemptClaim();
     };
 
     // 0. Masked tile during initial countdown
@@ -90,16 +111,19 @@ export const Tile: React.FC<TileProps> = React.memo(
       );
     }
 
-    // 3. Normal Available Tile (NO TARGET HIGHLIGHT - players must visually search for the number!)
+    // 3. Normal Available Tile according to selected Grid Model theme
     return (
       <button
         type="button"
         data-number={number}
         onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
         onClick={handleClick}
         disabled={disabled}
-        className={`flex items-center justify-center aspect-square rounded-xl font-display font-black text-xs sm:text-base text-slate-100 bg-gradient-to-b from-[#1C263B] to-[#0E1726] hover:from-[#24314C] hover:to-[#131F33] border border-slate-700/80 hover:border-cyan-400 active:scale-95 active:brightness-125 transition-all duration-75 select-none focus:outline-none shadow-[0_2px_8px_rgba(0,0,0,0.4)] ${
-          disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer active:bg-cyan-900/40'
+        className={`flex items-center justify-center aspect-square rounded-xl font-display font-black text-xs sm:text-base border transition-all duration-75 select-none focus:outline-none touch-manipulation active:scale-95 active:brightness-125 ${
+          model.tileDefault
+        } ${model.tileHover} ${model.tileText} ${model.tileShadow} ${
+          disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
         }`}
         aria-label={`Number ${number}`}
       >
@@ -112,7 +136,9 @@ export const Tile: React.FC<TileProps> = React.memo(
       prev.number === next.number &&
       prev.disabled === next.disabled &&
       prev.isMasked === next.isMasked &&
+      prev.gridModelId === next.gridModelId &&
       prev.claim?.playerId === next.claim?.playerId &&
+      prev.claim?.serverClaimedAt === next.claim?.serverClaimedAt &&
       prev.onClaim === next.onClaim
     );
   }

@@ -122,7 +122,9 @@ export class RoomManager {
         ? payload.settings?.countdownSeconds ?? 5
         : 5,
       gameMode: payload.settings?.gameMode ?? 'TIME_CHALLENGE',
-      durationSeconds: payload.settings?.durationSeconds ?? 180, // 3 minutes default
+      durationSeconds: payload.settings?.durationSeconds !== undefined
+        ? payload.settings.durationSeconds
+        : (payload.settings?.gameMode === 'COMPLETE_GRID' ? 0 : 180),
       isPrivate: payload.settings?.isPrivate ?? false,
       password: payload.settings?.password || undefined,
       wrongClickPenalty: payload.settings?.wrongClickPenalty ?? 'NONE',
@@ -411,7 +413,7 @@ export class RoomManager {
       maxTarget: room.settings.numberRange.max,
       startedAt: countdownEndsAt,
       countdownEndsAt,
-      endsAt: countdownEndsAt + room.settings.durationSeconds * 1000,
+      endsAt: countdownEndsAt + (room.settings.durationSeconds > 0 ? room.settings.durationSeconds * 1000 : 86400000),
       claims: [],
       claimedMap: {},
       playerStats,
@@ -472,7 +474,9 @@ export class RoomManager {
     room.currentMatch.status = 'RUNNING';
     room.currentMatch.startedAt = Date.now();
     room.currentMatch.lastClaimTimestamp = Date.now();
-    room.currentMatch.endsAt = Date.now() + room.settings.durationSeconds * 1000;
+    room.currentMatch.endsAt = room.settings.durationSeconds > 0
+      ? Date.now() + room.settings.durationSeconds * 1000
+      : Date.now() + 86400000;
 
     this.broadcastToRoom(roomId, 'game:started', {
       matchId: room.currentMatch.id,
@@ -506,15 +510,21 @@ export class RoomManager {
       }
 
       const now = Date.now();
-      const remainingSeconds = Math.max(0, Math.ceil((room.currentMatch.endsAt - now) / 1000));
+      const isUnlimited = !room.settings.durationSeconds || room.settings.durationSeconds <= 0;
+      const remainingSeconds = isUnlimited
+        ? 0
+        : Math.max(0, Math.ceil((room.currentMatch.endsAt - now) / 1000));
+      const elapsedSeconds = Math.max(0, Math.floor((now - room.currentMatch.startedAt) / 1000));
 
       this.broadcastToRoom(roomId, 'game:timerUpdated', {
         remainingSeconds,
+        elapsedSeconds,
+        isUnlimited,
         serverTime: now,
         endsAt: room.currentMatch.endsAt,
       });
 
-      if (now >= room.currentMatch.endsAt) {
+      if (!isUnlimited && now >= room.currentMatch.endsAt) {
         clearInterval(timerInterval);
         this.matchTimers.delete(roomId);
         this.finishMatch(roomId, 'Time expired');

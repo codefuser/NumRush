@@ -14,8 +14,9 @@ export const CreateGameModal: React.FC<CreateGameModalProps> = ({ onClose, onCre
   const [customCount, setCustomCount] = useState<number>(100);
 
   const [playerLimit, setPlayerLimit] = useState<number>(4);
-  const [gameMode, setGameMode] = useState<GameMode>('TIME_CHALLENGE');
+  const [gameMode, setGameMode] = useState<GameMode>('COMPLETE_GRID');
   const [durationPreset, setDurationPreset] = useState<number>(180);
+  const [completeGridDuration, setCompleteGridDuration] = useState<number>(0); // 0 = Unlimited / No Time Limit
   const [isPrivate, setIsPrivate] = useState<boolean>(false);
   const [countdown, setCountdown] = useState<number>(5);
   const [wrongClickPenalty, setWrongClickPenalty] = useState<WrongClickPenalty>('NONE');
@@ -29,12 +30,14 @@ export const CreateGameModal: React.FC<CreateGameModalProps> = ({ onClose, onCre
     setError(null);
     soundManager.playCorrect();
 
+    const selectedDuration = gameMode === 'COMPLETE_GRID' ? completeGridDuration : durationPreset;
+
     const settings: RoomSettings = {
       numberRange: { min: 1, max: effectiveMax },
       playerLimit,
       countdownSeconds: countdown,
       gameMode,
-      durationSeconds: durationPreset,
+      durationSeconds: selectedDuration,
       isPrivate,
       wrongClickPenalty,
       allowLateJoin: false,
@@ -266,29 +269,67 @@ export const CreateGameModal: React.FC<CreateGameModalProps> = ({ onClose, onCre
               </button>
             </div>
 
+            {/* Duration Selector for COMPLETE_GRID */}
+            {gameMode === 'COMPLETE_GRID' && (
+              <div className="mt-2.5 p-2 rounded-xl bg-gray-900/60 border border-gray-800">
+                <div className="flex items-center justify-between text-xs mb-1.5 font-mono">
+                  <span className="text-gray-400">Time Limit:</span>
+                  <span className="text-cyan-300 font-bold">
+                    {completeGridDuration === 0 ? 'Unlimited (Full Clear)' : `${completeGridDuration / 60} Minutes`}
+                  </span>
+                </div>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {[
+                    { label: 'No Limit', sec: 0 },
+                    { label: '3m', sec: 180 },
+                    { label: '5m', sec: 300 },
+                    { label: '10m', sec: 600 },
+                  ].map((item) => (
+                    <button
+                      key={item.sec}
+                      type="button"
+                      onClick={() => setCompleteGridDuration(item.sec)}
+                      className={`py-1 text-center rounded-lg text-xs font-mono font-bold border transition-colors cursor-pointer ${
+                        completeGridDuration === item.sec
+                          ? 'bg-cyan-500/25 text-cyan-300 border-cyan-400 shadow-[0_0_10px_rgba(0,240,255,0.2)]'
+                          : 'bg-gray-800/40 text-gray-400 border-gray-700 hover:border-gray-600'
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Duration Selector (for Time Challenge) */}
             {gameMode === 'TIME_CHALLENGE' && (
-              <div className="mt-2.5 flex items-center gap-2 p-2 rounded-xl bg-gray-900/60 border border-gray-800">
-                <span className="text-xs text-gray-400 font-mono">Duration:</span>
-                {[
-                  { label: '1m', sec: 60 },
-                  { label: '3m', sec: 180 },
-                  { label: '5m', sec: 300 },
-                  { label: '10m', sec: 600 },
-                ].map((item) => (
-                  <button
-                    key={item.sec}
-                    type="button"
-                    onClick={() => setDurationPreset(item.sec)}
-                    className={`flex-1 py-1 text-center rounded-lg text-xs font-mono font-bold border transition-colors cursor-pointer ${
-                      durationPreset === item.sec
-                        ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400'
-                        : 'bg-gray-800/40 text-gray-400 border-gray-700'
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
+              <div className="mt-2.5 p-2 rounded-xl bg-gray-900/60 border border-gray-800">
+                <div className="flex items-center justify-between text-xs mb-1.5 font-mono">
+                  <span className="text-gray-400">Duration:</span>
+                  <span className="text-cyan-300 font-bold">{durationPreset / 60} Minutes</span>
+                </div>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {[
+                    { label: '1m', sec: 60 },
+                    { label: '3m', sec: 180 },
+                    { label: '5m', sec: 300 },
+                    { label: '10m', sec: 600 },
+                  ].map((item) => (
+                    <button
+                      key={item.sec}
+                      type="button"
+                      onClick={() => setDurationPreset(item.sec)}
+                      className={`py-1 text-center rounded-lg text-xs font-mono font-bold border transition-colors cursor-pointer ${
+                        durationPreset === item.sec
+                          ? 'bg-cyan-500/25 text-cyan-300 border-cyan-400 shadow-[0_0_10px_rgba(0,240,255,0.2)]'
+                          : 'bg-gray-800/40 text-gray-400 border-gray-700 hover:border-gray-600'
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
           </div>

@@ -46,6 +46,7 @@ describe('GameRules Unit Tests', () => {
   it('should reject claim if match is not running or timer expired', () => {
     const mockMatch: Partial<MatchState> = {
       status: 'COUNTDOWN',
+      settings: { durationSeconds: 60 } as any,
       endsAt: Date.now() + 60000,
       playerStats: { p1: { score: 0, correctClicks: 0, wrongClicks: 0, totalReactionTimeMs: 0, avgReactionTimeMs: 0, accuracy: 0, claims: [] } },
       claims: [],
@@ -54,6 +55,19 @@ describe('GameRules Unit Tests', () => {
     const res = GameRules.validateClaimEligibility(mockMatch as MatchState, 'p1', 'act-1', Date.now());
     expect(res.eligible).toBe(false);
     expect(res.reason).toContain('not in progress');
+  });
+
+  it('should allow claims indefinitely if durationSeconds is 0 (unlimited time)', () => {
+    const mockMatch: Partial<MatchState> = {
+      status: 'RUNNING',
+      settings: { durationSeconds: 0 } as any,
+      endsAt: Date.now() - 1000, // past timestamp
+      playerStats: { p1: { score: 0, correctClicks: 0, wrongClicks: 0, totalReactionTimeMs: 0, avgReactionTimeMs: 0, accuracy: 0, claims: [] } },
+      claims: [],
+    };
+
+    const res = GameRules.validateClaimEligibility(mockMatch as MatchState, 'p1', 'act-1', Date.now());
+    expect(res.eligible).toBe(true);
   });
 
   it('should award point on correct target, advance target, and reject wrong target', () => {

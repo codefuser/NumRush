@@ -50,7 +50,7 @@ export class GameRules {
       return { eligible: false, reason: 'Match is not in progress' };
     }
 
-    if (now > match.endsAt) {
+    if (match.settings.durationSeconds > 0 && now > match.endsAt) {
       return { eligible: false, reason: 'Match time has expired' };
     }
 

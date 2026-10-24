@@ -46,9 +46,12 @@ class SocketService {
 
     this.socket = io(BACKEND_URL, {
       transports: ['websocket', 'polling'],
-      reconnectionAttempts: 15,
+      reconnection: true,
+      reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
-      timeout: 10000,
+      reconnectionDelayMax: 5000,
+      randomizationFactor: 0.5,
+      timeout: 12000,
     });
 
     this.socket.on('connect', () => {
@@ -57,10 +60,27 @@ class SocketService {
       console.log('✓ Connected to NumRush game server:', this.socket?.id);
     });
 
+    this.socket.io.on('reconnect_attempt', () => {
+      this.connectionStatus = 'connecting';
+      this.notifyStatus();
+    });
+
+    this.socket.io.on('reconnect', () => {
+      this.connectionStatus = 'connected';
+      this.notifyStatus();
+      console.log('✓ Reconnected to NumRush game server');
+    });
+
     this.socket.on('disconnect', (reason) => {
       this.connectionStatus = 'disconnected';
       this.notifyStatus();
       console.warn('Disconnected from server:', reason);
+      if (reason === 'io server disconnect' || reason === 'transport close') {
+        // Automatically try to reconnect
+        setTimeout(() => {
+          this.socket?.connect();
+        }, 1000);
+      }
     });
 
     this.socket.on('connect_error', (err) => {
@@ -69,7 +89,33 @@ class SocketService {
       console.error('Socket connection error:', err.message);
     });
 
+    // Auto reconnect when device regains internet connectivity
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', () => {
+        console.log('Network online detected, reconnecting socket...');
+        this.reconnect();
+      });
+      window.addEventListener('offline', () => {
+        this.connectionStatus = 'disconnected';
+        this.notifyStatus();
+      });
+    }
+
     return this.socket;
+  }
+
+  public reconnect() {
+    if (this.socket) {
+      this.connectionStatus = 'connecting';
+      this.notifyStatus();
+      this.socket.connect();
+    } else {
+      this.init();
+    }
+  }
+
+  public getStatus(): 'connected' | 'disconnected' | 'connecting' {
+    return this.connectionStatus;
   }
 
   public onStatusChange(callback: (status: 'connected' | 'disconnected' | 'connecting') => void) {

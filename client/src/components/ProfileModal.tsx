@@ -16,9 +16,14 @@ import {
   Sparkles,
   Flame,
   Crown,
+  LayoutGrid,
+  Maximize,
+  Minimize,
 } from 'lucide-react';
 import { api } from '../services/api.js';
 import { soundManager } from '../services/audio.js';
+import { playerStatsService } from '../services/playerStatsService.js';
+import { gridThemeService, GRID_MODELS, GridModelId } from '../services/gridTheme.js';
 import type { PersistentPlayerStats } from '../types/index.js';
 
 interface ProfileModalProps {
@@ -42,12 +47,22 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   onUpdateName,
   onClose,
 }) => {
-  const [stats, setStats] = useState<PersistentPlayerStats | null>(null);
-  const [history, setHistory] = useState<any[]>([]);
+  // 1. Initialize stats from local persistent storage first, then sync with backend
+  const [stats, setStats] = useState<PersistentPlayerStats>(() => {
+    return playerStatsService.getLocalStats(userId, currentName);
+  });
+
+  const [history, setHistory] = useState<any[]>(() => {
+    return playerStatsService.getLocalHistory(userId);
+  });
+
   const [isEditing, setIsEditing] = useState(false);
   const [nameInput, setNameInput] = useState(currentName);
   const [saving, setSaving] = useState(false);
   const [isMuted, setIsMuted] = useState(soundManager.isMuted());
+  const [isFullscreen, setIsFullscreen] = useState(() => !!document.fullscreenElement);
+  const [selectedGridModel, setSelectedGridModel] = useState<GridModelId>(() => gridThemeService.getCurrentModelId());
+
   const [vibrationEnabled, setVibrationEnabled] = useState(() => {
     return localStorage.getItem('numrush_vibration') !== 'false';
   });
@@ -57,21 +72,35 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   });
 
   useEffect(() => {
-    api.getProfile(userId).then((res) => {
-      if (res) setStats(res);
+    // Sync with backend API in background
+    playerStatsService.syncWithBackend(userId, currentName).then((latest) => {
+      if (latest) setStats(latest);
     });
+
     api.getHistory(userId).then((res) => {
-      if (res) setHistory(res);
+      if (res && res.length > 0) {
+        setHistory(res);
+      }
     });
-  }, [userId]);
+
+    const handleFsChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', handleFsChange);
+    return () => document.removeEventListener('fullscreenchange', handleFsChange);
+  }, [userId, currentName]);
 
   const handleSaveName = async () => {
     const trimmed = nameInput.trim();
     if (!trimmed) return;
     setSaving(true);
     soundManager.playCorrect();
-    await api.updateProfile(userId, trimmed);
     onUpdateName(trimmed);
+
+    // Update in local stats
+    const updated = { ...stats, displayName: trimmed };
+    playerStatsService.saveLocalStats(updated);
+    setStats(updated);
+
+    await api.updateProfile(userId, trimmed);
     setIsEditing(false);
     setSaving(false);
   };
@@ -79,6 +108,12 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const handlePaletteSelect = (id: string) => {
     setSelectedPalette(id);
     localStorage.setItem('numrush_avatar_palette', id);
+    soundManager.playCorrect();
+  };
+
+  const handleGridModelSelect = (id: GridModelId) => {
+    setSelectedGridModel(id);
+    gridThemeService.setModelId(id);
     soundManager.playCorrect();
   };
 
@@ -94,6 +129,16 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     if (next && navigator.vibrate) {
       navigator.vibrate(50);
     }
+  };
+
+  const toggleFullscreen = () => {
+    try {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    } catch {}
   };
 
   const totalMatches = stats?.totalMatches ?? 0;
@@ -136,7 +181,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-lg bg-[#0D1424] border border-cyan-500/30 rounded-3xl p-5 sm:p-6 shadow-[0_0_50px_rgba(0,240,255,0.2)] my-auto max-h-[92vh] flex flex-col cursor-default"
+        className="relative w-full max-w-xl bg-[#0D1424] border border-cyan-500/30 rounded-3xl p-5 sm:p-6 shadow-[0_0_50px_rgba(0,240,255,0.2)] my-auto max-h-[92vh] flex flex-col cursor-default"
       >
         {/* Close Button */}
         <button
@@ -171,7 +216,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 <button
                   onClick={handleSaveName}
                   disabled={saving}
-                  className="p-2 rounded-xl bg-cyan-400 text-black font-bold hover:bg-cyan-300 transition-colors"
+                  className="p-2 rounded-xl bg-cyan-400 text-black font-bold hover:bg-cyan-300 transition-colors cursor-pointer"
                 >
                   <Check className="w-4 h-4 stroke-[3]" />
                 </button>
@@ -229,7 +274,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           {/* Core Career Stats Grid */}
           <div>
             <span className="text-[10px] font-mono uppercase text-gray-400 font-bold tracking-wider block mb-2">
-              Career Performance
+              Career Performance (Permanent Record)
             </span>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <div className="p-2.5 rounded-xl bg-gray-900/60 border border-gray-800 text-center">
@@ -270,6 +315,57 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             </div>
           </div>
 
+          {/* Grid Model / Theme Selector */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] font-mono uppercase text-cyan-400 font-bold tracking-wider flex items-center gap-1.5">
+                <LayoutGrid className="w-3.5 h-3.5" />
+                Grid Design Models (Choose Style)
+              </span>
+              <span className="text-[10px] font-mono text-gray-400">
+                {GRID_MODELS[selectedGridModel]?.name}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {Object.values(GRID_MODELS).map((model) => {
+                const isSelected = selectedGridModel === model.id;
+                return (
+                  <button
+                    key={model.id}
+                    type="button"
+                    onClick={() => handleGridModelSelect(model.id)}
+                    className={`p-2.5 rounded-2xl border text-left transition-all cursor-pointer relative overflow-hidden group ${
+                      isSelected
+                        ? 'bg-cyan-500/15 border-cyan-400 shadow-[0_0_15px_rgba(0,240,255,0.25)] ring-1 ring-cyan-400'
+                        : 'bg-gray-900/60 border-gray-800 hover:border-gray-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="font-display font-bold text-xs text-white">
+                        {model.name}
+                      </span>
+                      {isSelected && (
+                        <span className="w-4 h-4 rounded-full bg-cyan-400 flex items-center justify-center text-black flex-shrink-0">
+                          <Check className="w-3 h-3 stroke-[3]" />
+                        </span>
+                      )}
+                    </div>
+                    {/* Visual Preview Box */}
+                    <div className={`h-7 w-full rounded-lg bg-gradient-to-r ${model.previewBg} border ${model.previewBorder} flex items-center justify-center gap-1`}>
+                      <span className="w-3.5 h-3.5 rounded bg-black/40 border border-white/20 text-[7px] flex items-center justify-center font-bold text-white">1</span>
+                      <span className="w-3.5 h-3.5 rounded bg-black/40 border border-white/20 text-[7px] flex items-center justify-center font-bold text-white">2</span>
+                      <span className="w-3.5 h-3.5 rounded bg-black/40 border border-white/20 text-[7px] flex items-center justify-center font-bold text-white">3</span>
+                    </div>
+                    <span className="text-[9px] text-gray-400 mt-1 block truncate">
+                      {model.description}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Avatar Theme Selector */}
           <div>
             <span className="text-[10px] font-mono uppercase text-gray-400 font-bold tracking-wider block mb-2">
@@ -280,7 +376,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 <button
                   key={pal.id}
                   onClick={() => handlePaletteSelect(pal.id)}
-                  className={`w-9 h-9 rounded-xl bg-gradient-to-br ${pal.from} ${pal.to} flex items-center justify-center transition-all ${
+                  className={`w-9 h-9 rounded-xl bg-gradient-to-br ${pal.from} ${pal.to} flex items-center justify-center transition-all cursor-pointer ${
                     selectedPalette === pal.id
                       ? 'ring-2 ring-white scale-110 shadow-lg'
                       : 'opacity-60 hover:opacity-100'
@@ -295,40 +391,51 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           {/* Preferences & Settings */}
           <div>
             <span className="text-[10px] font-mono uppercase text-gray-400 font-bold tracking-wider block mb-2">
-              Game Preferences
+              Game Preferences & Display
             </span>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <button
                 onClick={toggleSound}
-                className={`p-3 rounded-2xl border text-xs font-semibold flex items-center justify-between transition-all active:scale-95 cursor-pointer ${
+                className={`p-2.5 rounded-2xl border text-xs font-semibold flex flex-col items-center justify-center gap-1 transition-all active:scale-95 cursor-pointer ${
                   !isMuted
                     ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300'
                     : 'bg-gray-900/50 border-gray-800 text-gray-400'
                 }`}
               >
-                <div className="flex items-center gap-2">
-                  {!isMuted ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-                  <span>Sound FX</span>
-                </div>
-                <span className="font-mono text-[10px] uppercase font-bold">
-                  {!isMuted ? 'ON' : 'OFF'}
+                {!isMuted ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                <span className="font-bold text-[11px]">Sound FX</span>
+                <span className="font-mono text-[9px] uppercase font-bold text-gray-400">
+                  {!isMuted ? 'ENABLED' : 'MUTED'}
                 </span>
               </button>
 
               <button
                 onClick={toggleVibration}
-                className={`p-3 rounded-2xl border text-xs font-semibold flex items-center justify-between transition-all active:scale-95 cursor-pointer ${
+                className={`p-2.5 rounded-2xl border text-xs font-semibold flex flex-col items-center justify-center gap-1 transition-all active:scale-95 cursor-pointer ${
                   vibrationEnabled
                     ? 'bg-purple-500/15 border-purple-500/40 text-purple-300'
                     : 'bg-gray-900/50 border-gray-800 text-gray-400'
                 }`}
               >
-                <div className="flex items-center gap-2">
-                  <Smartphone className="w-4 h-4" />
-                  <span>Haptics</span>
-                </div>
-                <span className="font-mono text-[10px] uppercase font-bold">
-                  {vibrationEnabled ? 'ON' : 'OFF'}
+                <Smartphone className="w-4 h-4" />
+                <span className="font-bold text-[11px]">Haptics</span>
+                <span className="font-mono text-[9px] uppercase font-bold text-gray-400">
+                  {vibrationEnabled ? 'ACTIVE' : 'OFF'}
+                </span>
+              </button>
+
+              <button
+                onClick={toggleFullscreen}
+                className={`p-2.5 rounded-2xl border text-xs font-semibold flex flex-col items-center justify-center gap-1 transition-all active:scale-95 cursor-pointer ${
+                  isFullscreen
+                    ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                    : 'bg-gray-900/50 border-gray-800 text-gray-400'
+                }`}
+              >
+                {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+                <span className="font-bold text-[11px]">Fullscreen</span>
+                <span className="font-mono text-[9px] uppercase font-bold text-gray-400">
+                  {isFullscreen ? 'ACTIVE' : 'WINDOWED'}
                 </span>
               </button>
             </div>

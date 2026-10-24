@@ -10,11 +10,15 @@ import {
   Target,
   Play,
   RotateCw,
+  Maximize,
+  Minimize,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { soundManager } from '../services/audio.js';
 import { soloStorage } from '../services/soloStorage.js';
 import { api } from '../services/api.js';
+import { playerStatsService } from '../services/playerStatsService.js';
+import { gridThemeService, GRID_MODELS, GridModelId } from '../services/gridTheme.js';
 import type { SoloGameConfig } from './SoloSetupModal.js';
 
 interface PracticeScreenProps {
@@ -47,6 +51,34 @@ export const PracticeScreen: React.FC<PracticeScreenProps> = ({
   const [isStarted, setIsStarted] = useState<boolean>(() => !!config.resumeSaved);
   const [isFinished, setIsFinished] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(soundManager.isMuted());
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(() => !!document.fullscreenElement);
+  const [gridModelId, setGridModelId] = useState<GridModelId>(() => gridThemeService.getCurrentModelId());
+
+  useEffect(() => {
+    const handleThemeChange = (e: Event) => {
+      const customEvent = e as CustomEvent<GridModelId>;
+      if (customEvent.detail) setGridModelId(customEvent.detail);
+    };
+    const handleFsChange = () => setIsFullscreen(!!document.fullscreenElement);
+    window.addEventListener('numrush:gridThemeChanged', handleThemeChange);
+    document.addEventListener('fullscreenchange', handleFsChange);
+    return () => {
+      window.removeEventListener('numrush:gridThemeChanged', handleThemeChange);
+      document.removeEventListener('fullscreenchange', handleFsChange);
+    };
+  }, []);
+
+  const gridModel = GRID_MODELS[gridModelId] || GRID_MODELS.cyber;
+
+  const toggleFullscreen = () => {
+    try {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    } catch {}
+  };
 
   // Interactive Pan / Zoom state
   const [zoom, setZoom] = useState<number>(1);
@@ -260,8 +292,8 @@ export const PracticeScreen: React.FC<PracticeScreenProps> = ({
             : 800;
 
         if (userId) {
-          api.recordSoloMatch({
-            playerId: userId,
+          playerStatsService.recordMatchResult({
+            userId,
             displayName: displayName || 'Hunter',
             score: maxNumber,
             won: true,
@@ -362,8 +394,13 @@ export const PracticeScreen: React.FC<PracticeScreenProps> = ({
 
       if (distance > 18) {
         hasMovedRef.current = true;
-        const maxPanX = viewportRef.current ? Math.round(viewportRef.current.clientWidth * 0.45) : 350;
-        const maxPanY = viewportRef.current ? Math.round(viewportRef.current.clientHeight * 0.45) : 350;
+        const vw = viewportRef.current?.clientWidth || 600;
+        const vh = viewportRef.current?.clientHeight || 600;
+        const boardW = gridCols * tileSize + (gridCols - 1) * 8 + 32;
+        const boardH = Math.ceil(maxNumber / gridCols) * tileSize + 32;
+
+        const maxPanX = Math.max(120, Math.round((boardW * zoom - vw) / 2) + 120);
+        const maxPanY = Math.max(120, Math.round((boardH * zoom - vh) / 2) + 120);
         const nextX = Math.max(-maxPanX, Math.min(maxPanX, panStartRef.current.x + dx));
         const nextY = Math.max(-maxPanY, Math.min(maxPanY, panStartRef.current.y + dy));
 
@@ -467,9 +504,17 @@ export const PracticeScreen: React.FC<PracticeScreenProps> = ({
           </button>
 
           <button
+            onClick={toggleFullscreen}
+            title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+            className="p-2 rounded-xl bg-gray-800/70 hover:bg-gray-700 text-gray-300 hover:text-white transition-colors tap-effect cursor-pointer"
+          >
+            {isFullscreen ? <Minimize className="w-4 h-4 text-cyan-400" /> : <Maximize className="w-4 h-4 text-gray-300" />}
+          </button>
+
+          <button
             onClick={toggleSound}
             title={isMuted ? 'Unmute' : 'Mute'}
-            className="p-2 rounded-xl bg-gray-800/70 hover:bg-gray-700 text-gray-300 hover:text-white transition-colors tap-effect"
+            className="p-2 rounded-xl bg-gray-800/70 hover:bg-gray-700 text-gray-300 hover:text-white transition-colors tap-effect cursor-pointer"
           >
             {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4 text-cyan-400" />}
           </button>
@@ -490,14 +535,14 @@ export const PracticeScreen: React.FC<PracticeScreenProps> = ({
         {/* Centered Matrix Card */}
         <div
           ref={boardRef}
-          className="relative will-change-transform select-none p-3 rounded-2xl bg-slate-950/40 border border-slate-800/60 shadow-2xl backdrop-blur-sm"
+          className={`relative will-change-transform select-none p-3 rounded-3xl border transition-all duration-150 ${gridModel.boardBg} ${gridModel.boardBorder}`}
           style={{
             transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})`,
             transformOrigin: 'center center',
             transition: isDraggingRef.current ? 'none' : 'transform 0.08s ease-out',
           }}
         >
-          {/* Numbers Grid (NO TARGET HIGHLIGHT — Players must search! Numbers masked during countdown) */}
+          {/* Numbers Grid */}
           <div
             className="grid gap-2 select-none"
             style={{
@@ -514,14 +559,14 @@ export const PracticeScreen: React.FC<PracticeScreenProps> = ({
                   type="button"
                   onClick={() => handleTileClick(num)}
                   disabled={isClaimed || isCountingDown}
-                  className={`flex items-center justify-center aspect-square rounded-xl font-display font-black text-sm sm:text-base select-none transition-all duration-75 focus:outline-none ${
+                  className={`flex items-center justify-center aspect-square rounded-xl font-display font-black text-sm sm:text-base select-none transition-all duration-75 focus:outline-none border touch-manipulation active:scale-95 active:brightness-125 ${
                     isCountingDown
-                      ? 'bg-gradient-to-b from-[#131B2A] to-[#0A0F1A] border border-cyan-500/20 text-cyan-500/30'
+                      ? 'bg-gradient-to-b from-[#131B2A] to-[#0A0F1A] border-cyan-500/20 text-cyan-500/30'
                       : isWrongFlash
                       ? 'bg-rose-950 border-2 border-rose-500 text-rose-300 animate-shake shadow-[0_0_15px_rgba(244,63,94,0.4)]'
                       : isClaimed
-                      ? 'bg-[#080E1A]/80 border border-emerald-500/30 text-emerald-500/40 line-through opacity-45 scale-[0.97]'
-                      : 'bg-gradient-to-b from-[#1C263B] to-[#0E1726] hover:from-[#24314C] hover:to-[#131F33] active:scale-95 active:brightness-125 border border-slate-700/80 hover:border-cyan-400 text-slate-100 shadow-[0_2px_8px_rgba(0,0,0,0.4)]'
+                      ? 'bg-[#080E1A]/80 border-emerald-500/30 text-emerald-500/40 line-through opacity-45 scale-[0.97]'
+                      : `${gridModel.tileDefault} ${gridModel.tileHover} ${gridModel.tileText} ${gridModel.tileShadow} cursor-pointer`
                   }`}
                 >
                   {isCountingDown ? (

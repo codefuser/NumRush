@@ -17,6 +17,7 @@ import { api } from './services/api.js';
 import { socketService } from './services/socket.js';
 import type { ActiveSessionData } from './services/socket.js';
 import { soundManager } from './services/audio.js';
+import { playerStatsService } from './services/playerStatsService.js';
 import type {
   Screen,
   RoomState,
@@ -65,6 +66,7 @@ export const App: React.FC = () => {
   // Timers & Countdown
   const [countdownRemaining, setCountdownRemaining] = useState<number | null>(null);
   const [serverRemainingSeconds, setServerRemainingSeconds] = useState<number>(180);
+  const [serverElapsedSeconds, setServerElapsedSeconds] = useState<number>(0);
 
   // Modals
   const [isSoloSetupOpen, setIsSoloSetupOpen] = useState<boolean>(false);
@@ -326,7 +328,7 @@ export const App: React.FC = () => {
 
         return {
           ...prev,
-          currentTarget: Math.max(prev.currentTarget, data.nextTarget),
+          currentTarget: data.nextTarget,
           claimedMap: updatedClaimedMap,
         };
       });
@@ -352,7 +354,7 @@ export const App: React.FC = () => {
           if (!prev) return prev;
           return {
             ...prev,
-            currentTarget: Math.max(prev.currentTarget, data.currentTarget),
+            currentTarget: data.currentTarget,
             claimedMap: data.claimedMap ? { ...prev.claimedMap, ...data.claimedMap } : prev.claimedMap,
           };
         });
@@ -360,8 +362,11 @@ export const App: React.FC = () => {
     });
 
     // K. Timer Updates from authoritative server
-    socket.on('game:timerUpdated', (data: { remainingSeconds: number }) => {
+    socket.on('game:timerUpdated', (data: { remainingSeconds: number; elapsedSeconds?: number; isUnlimited?: boolean }) => {
       setServerRemainingSeconds(data.remainingSeconds);
+      if (data.elapsedSeconds !== undefined) {
+        setServerElapsedSeconds(data.elapsedSeconds);
+      }
     });
 
     // L. Game Finished
@@ -369,6 +374,23 @@ export const App: React.FC = () => {
       setResults(data.results);
       setCountdownRemaining(null);
       setScreen('RESULTS');
+
+      // Instantly record persistent local career stats
+      const myRanking = data.results.rankings.find((r) => r.playerId === userId);
+      const won = data.results.winner?.playerId === userId && !data.results.isTie;
+      if (myRanking) {
+        playerStatsService.recordMatchResult({
+          userId,
+          displayName,
+          score: myRanking.score,
+          won,
+          accuracy: myRanking.accuracy,
+          avgReactionTimeMs: myRanking.avgReactionTimeMs,
+          gameMode: data.results.gameMode,
+          matchId: data.results.matchId,
+        });
+      }
+
       api.getProfile(userId);
     });
 
@@ -491,14 +513,19 @@ export const App: React.FC = () => {
     socket.emit('room:kick', { roomId: room.id, targetPlayerId });
   };
 
-  // Smooth local timer countdown while match is RUNNING
+  // Smooth local timer while match is RUNNING
   useEffect(() => {
     if (screen !== 'GAME' || match?.status !== 'RUNNING' || countdownRemaining !== null) return;
+    const isUnlimited = !match.settings.durationSeconds || match.settings.durationSeconds <= 0;
     const timer = setInterval(() => {
-      setServerRemainingSeconds((prev) => Math.max(0, prev - 1));
+      if (isUnlimited) {
+        setServerElapsedSeconds((prev) => prev + 1);
+      } else {
+        setServerRemainingSeconds((prev) => Math.max(0, prev - 1));
+      }
     }, 1000);
     return () => clearInterval(timer);
-  }, [screen, match?.status, countdownRemaining]);
+  }, [screen, match?.status, match?.settings.durationSeconds, countdownRemaining]);
 
   const handleClaimNumber = useCallback(
     (number: number) => {

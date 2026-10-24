@@ -3,6 +3,7 @@ import {
   ZoomIn,
   ZoomOut,
   Maximize,
+  Minimize,
   Clock,
   Trophy,
   Volume2,
@@ -11,11 +12,15 @@ import {
   X,
   Crown,
   WifiOff,
+  RotateCcw,
+  Sparkles,
+  Users,
 } from 'lucide-react';
 import type { RoomState, MatchState } from '../types/index.js';
 import { Tile } from './Tile.js';
 import { soundManager } from '../services/audio.js';
 import { socketService } from '../services/socket.js';
+import { gridThemeService, GridModelId, GRID_MODELS } from '../services/gridTheme.js';
 
 interface GameScreenProps {
   room: RoomState;
@@ -23,6 +28,7 @@ interface GameScreenProps {
   currentPlayerId: string;
   countdownRemaining: number | null;
   serverRemainingSeconds: number;
+  serverElapsedSeconds?: number;
   onClaimNumber: (number: number) => void;
   onLeaveRoom?: () => void;
 }
@@ -33,15 +39,54 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   currentPlayerId,
   countdownRemaining,
   serverRemainingSeconds,
+  serverElapsedSeconds = 0,
   onClaimNumber,
   onLeaveRoom,
 }) => {
+  // Grid Theme state
+  const [gridModelId, setGridModelId] = useState<GridModelId>(() => gridThemeService.getCurrentModelId());
+
+  useEffect(() => {
+    const handleThemeChange = (e: Event) => {
+      const customEvent = e as CustomEvent<GridModelId>;
+      if (customEvent.detail) {
+        setGridModelId(customEvent.detail);
+      }
+    };
+    window.addEventListener('numrush:gridThemeChanged', handleThemeChange);
+    return () => window.removeEventListener('numrush:gridThemeChanged', handleThemeChange);
+  }, []);
+
+  const gridModel = GRID_MODELS[gridModelId] || GRID_MODELS.cyber;
+
   // Pan and Zoom Canvas State
   const [zoom, setZoom] = useState<number>(1);
   const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isScoresOpen, setIsScoresOpen] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(soundManager.isMuted());
   const [socketStatus, setSocketStatus] = useState<'connected' | 'disconnected' | 'connecting'>('connected');
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(() => !!document.fullscreenElement);
+
+  // Fullscreen event listener
+  useEffect(() => {
+    const handleFsChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFsChange);
+    return () => document.removeEventListener('fullscreenchange', handleFsChange);
+  }, []);
+
+  const handleToggleFullscreen = () => {
+    try {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    } catch {
+      // ignore
+    }
+  };
 
   useEffect(() => {
     return socketService.onStatusChange((status) => {
@@ -60,6 +105,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   const activePointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   const initialPinchDistRef = useRef<number | null>(null);
   const initialZoomRef = useRef<number>(1);
+  const lastTapCanvasTimeRef = useRef<number>(0);
 
   // Audio cues on countdown
   useEffect(() => {
@@ -90,11 +136,12 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const isLowTime = serverRemainingSeconds <= 30 && match.status === 'RUNNING';
+  const isUnlimitedMode = !match.settings.durationSeconds || match.settings.durationSeconds <= 0;
+  const isLowTime = !isUnlimitedMode && serverRemainingSeconds <= 30 && match.status === 'RUNNING';
   const totalNumbers = match.maxTarget - match.settings.numberRange.min + 1;
   const claimedCount = Object.keys(match.claimedMap).length;
 
-  // Grid columns adapted for mobile screens & number count
+  // Grid columns adapted for responsive screens & number count
   const getGridCols = () => {
     if (totalNumbers <= 30) return 5;
     if (totalNumbers <= 50) return 5;
@@ -120,9 +167,9 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     const boardW = totalCols * tileSize + (totalCols - 1) * gap + 32;
     const boardH = totalRows * tileSize + (totalRows - 1) * gap + 32;
 
-    const scaleX = (vw - 24) / boardW;
-    const scaleY = (vh - 24) / boardH;
-    const idealZoom = Math.min(scaleX, scaleY, 1.15);
+    const scaleX = (vw - 32) / boardW;
+    const scaleY = (vh - 32) / boardH;
+    const idealZoom = Math.min(scaleX, scaleY, 1.2);
     return Math.max(0.35, Math.round(idealZoom * 100) / 100);
   }, [totalNumbers, gridCols, tileSize]);
 
@@ -151,14 +198,24 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   }, [calculateFitZoom]);
 
   // Zoom Helpers
-  const handleZoomIn = () => setZoom((z) => Math.min(2.5, Math.round((z + 0.15) * 100) / 100));
-  const handleZoomOut = () => setZoom((z) => Math.max(0.4, Math.round((z - 0.15) * 100) / 100));
+  const handleZoomIn = () => setZoom((z) => Math.min(2.5, Math.round((z + 0.2) * 100) / 100));
+  const handleZoomOut = () => setZoom((z) => Math.max(0.4, Math.round((z - 0.2) * 100) / 100));
 
   // Wheel zoom handler
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
-    const delta = e.deltaY < 0 ? 0.1 : -0.1;
+    const delta = e.deltaY < 0 ? 0.12 : -0.12;
     setZoom((z) => Math.min(2.5, Math.max(0.4, Math.round((z + delta) * 100) / 100)));
+  };
+
+  // Double-tap or double-click to toggle between Fit and 1.4x zoom
+  const handleCanvasDoubleClick = () => {
+    const fitZoom = calculateFitZoom();
+    if (Math.abs(zoom - fitZoom) < 0.15) {
+      setZoom(Math.min(2.2, fitZoom * 1.45));
+    } else {
+      handleFitScreen();
+    }
   };
 
   // Pointer Down (Mouse or Touch)
@@ -200,12 +257,18 @@ export const GameScreen: React.FC<GameScreenProps> = ({
       const dy = e.clientY - dragStartRef.current.y;
       const distance = Math.hypot(dx, dy);
 
-      // Deadzone threshold for mobile touch taps (15px)
-      if (distance > 15) {
+      // Deadzone threshold for mobile touch taps (18px)
+      if (distance > 18) {
         hasMovedRef.current = true;
-        // Clamp panning so the board can never leave the screen
-        const maxPanX = viewportRef.current ? Math.round(viewportRef.current.clientWidth * 0.45) : 350;
-        const maxPanY = viewportRef.current ? Math.round(viewportRef.current.clientHeight * 0.45) : 350;
+        // Dynamic panning bounds so players can easily reach outer edges at high zoom
+        const vw = viewportRef.current?.clientWidth || 600;
+        const vh = viewportRef.current?.clientHeight || 600;
+        const boardW = gridCols * tileSize + (gridCols - 1) * 8 + 32;
+        const boardH = Math.ceil(totalNumbers / gridCols) * tileSize + 32;
+
+        const maxPanX = Math.max(120, Math.round((boardW * zoom - vw) / 2) + 120);
+        const maxPanY = Math.max(120, Math.round((boardH * zoom - vh) / 2) + 120);
+
         const nextX = Math.max(-maxPanX, Math.min(maxPanX, panStartRef.current.x + dx));
         const nextY = Math.max(-maxPanY, Math.min(maxPanY, panStartRef.current.y + dy));
 
@@ -227,7 +290,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     }
   };
 
-  // Claim click handler: Tile component validates tap vs drag distance locally
+  // Claim click handler
   const handleTileClaim = useCallback((num: number) => {
     onClaimNumber(num);
   }, [onClaimNumber]);
@@ -237,7 +300,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     setIsMuted(muted);
   };
 
-  // Ranked players for scores modal
+  // Ranked players for scores modal and desktop side panel
   const playersList = Object.values(room.players).sort((a, b) => b.score - a.score);
   const myPlayer = room.players[currentPlayerId];
 
@@ -273,10 +336,10 @@ export const GameScreen: React.FC<GameScreenProps> = ({
         </div>
       )}
 
-      {/* 2. Minimal Native Game Top HUD */}
-      <header className="bg-[#0B0F19]/95 border-b border-gray-800/80 px-3 pt-[max(env(safe-area-inset-top),28px)] sm:pt-3 pb-2.5 flex items-center justify-between z-30 flex-shrink-0">
+      {/* 2. Responsive Game HUD Header */}
+      <header className="bg-[#0B0F19]/95 border-b border-gray-800/80 px-3 sm:px-5 pt-[max(env(safe-area-inset-top),20px)] sm:pt-2.5 pb-2.5 flex items-center justify-between z-30 flex-shrink-0">
         {/* Left: Leave / Room code & Time */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 sm:gap-3">
           {onLeaveRoom && (
             <button
               onClick={() => {
@@ -285,148 +348,273 @@ export const GameScreen: React.FC<GameScreenProps> = ({
                 }
               }}
               title="Exit Game"
-              className="p-1.5 rounded-lg bg-gray-800/60 hover:bg-gray-700 text-gray-400 hover:text-white"
+              className="p-2 rounded-xl bg-gray-800/70 hover:bg-gray-700 text-gray-400 hover:text-white transition-all tap-effect cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
             </button>
           )}
 
           <div className="flex flex-col">
-            <span className="text-[10px] font-mono text-cyan-400/90 leading-none">
-              {room.roomCode}
-            </span>
-            <div className={`flex items-center gap-1 font-mono font-bold text-xs ${isLowTime ? 'text-rose-400 animate-pulse' : 'text-gray-300'}`}>
-              <Clock className="w-3 h-3" />
-              <span>{formatTime(serverRemainingSeconds)}</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-mono text-cyan-400 font-bold leading-none">
+                {room.roomCode}
+              </span>
+              <span className="text-[9px] font-mono uppercase px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-800/60 hidden sm:inline">
+                {isUnlimitedMode ? 'Complete Grid' : 'Time Challenge'}
+              </span>
+            </div>
+
+            <div
+              className={`flex items-center gap-1 font-mono font-bold text-xs mt-0.5 ${
+                isUnlimitedMode
+                  ? 'text-cyan-300'
+                  : isLowTime
+                  ? 'text-rose-400 animate-pulse'
+                  : 'text-gray-300'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span>
+                {isUnlimitedMode
+                  ? `Elapsed: ${formatTime(serverElapsedSeconds)}`
+                  : formatTime(serverRemainingSeconds)}
+              </span>
             </div>
           </div>
         </div>
 
-        {/* Offline / Reconnecting Warning */}
+        {/* Offline / Reconnecting Warning with manual retry */}
         {socketStatus !== 'connected' && (
-          <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-950/90 border border-rose-500/60 text-rose-300 text-[10px] font-mono animate-pulse">
-            <WifiOff className="w-3 h-3 text-rose-400" />
-            <span className="font-bold">Reconnecting...</span>
-          </div>
+          <button
+            onClick={() => socketService.reconnect()}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-rose-950/90 border border-rose-500/70 text-rose-300 text-[11px] font-mono font-bold animate-pulse hover:bg-rose-900 cursor-pointer"
+            title="Click to reconnect immediately"
+          >
+            <WifiOff className="w-3.5 h-3.5 text-rose-400" />
+            <span>Reconnecting (Tap to Retry)</span>
+          </button>
         )}
 
-        {/* Center: TARGET NUMBER TO HUNT (Clear, prominent, non-distracting) */}
-        <div className="flex items-center gap-2 px-3 py-1 rounded-xl bg-amber-500/10 border border-amber-500/40 shadow-[0_0_15px_rgba(245,158,11,0.2)]">
-          <span className="text-[10px] font-mono uppercase text-amber-300 font-semibold tracking-wider">
+        {/* Center: BIG PROMINENT TARGET NUMBER TO HUNT */}
+        <div className="flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-2xl bg-amber-500/15 border-2 border-amber-400/60 shadow-[0_0_20px_rgba(245,158,11,0.3)]">
+          <span className="text-[10px] sm:text-xs font-mono uppercase text-amber-300 font-black tracking-wider">
             FIND
           </span>
-          <span className="font-display font-black text-2xl text-amber-400 tracking-tight">
+          <span className="font-display font-black text-2xl sm:text-3xl text-amber-400 tracking-tight drop-shadow-[0_0_12px_rgba(245,158,11,0.6)]">
             {match.currentTarget <= match.maxTarget ? match.currentTarget : 'DONE'}
           </span>
         </div>
 
-        {/* Right: Scores Toggle & Sound */}
-        <div className="flex items-center gap-1.5">
+        {/* Right Actions: Scores, Fullscreen, Sound */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* Mobile Scores Modal Button */}
           <button
             onClick={() => setIsScoresOpen(true)}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-950/60 hover:bg-cyan-900/60 border border-cyan-500/40 text-cyan-300 text-xs font-mono font-bold"
+            className="lg:hidden flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-cyan-950/60 hover:bg-cyan-900/60 border border-cyan-500/40 text-cyan-300 text-xs font-mono font-bold cursor-pointer"
           >
             <Trophy className="w-3.5 h-3.5 text-amber-400" />
             <span>{myPlayer?.score ?? 0} pts</span>
           </button>
 
+          {/* Fullscreen Button */}
+          <button
+            onClick={handleToggleFullscreen}
+            title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen (Hide Browser URL)'}
+            className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 border border-gray-800 text-gray-300 hover:text-white transition-all tap-effect cursor-pointer"
+            aria-label="Toggle Fullscreen"
+          >
+            {isFullscreen ? <Minimize className="w-4 h-4 text-cyan-400" /> : <Maximize className="w-4 h-4 text-gray-300" />}
+          </button>
+
+          {/* Sound Toggle */}
           <button
             onClick={toggleSound}
-            className="p-1.5 rounded-lg bg-gray-800/60 hover:bg-gray-700 text-gray-400 hover:text-white"
+            title={isMuted ? 'Unmute Sound' : 'Mute Sound'}
+            className="p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 border border-gray-800 text-gray-300 hover:text-white transition-all tap-effect cursor-pointer"
           >
             {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4 text-cyan-400" />}
           </button>
         </div>
       </header>
 
-      {/* 3. Centered Pan & Zoom Canvas */}
-      <main
-        ref={viewportRef}
-        onWheel={handleWheel}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
-        className="flex-1 relative w-full h-full overflow-hidden flex items-center justify-center bg-[#070b13] cursor-grab active:cursor-grabbing"
-        style={{ touchAction: 'none' }}
-      >
-        {/* Centered Matrix Card */}
-        <div
-          ref={boardRef}
-          className="relative will-change-transform select-none p-3 rounded-2xl bg-slate-950/40 border border-slate-800/60 shadow-2xl backdrop-blur-sm"
-          style={{
-            transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})`,
-            transformOrigin: 'center center',
-            transition: isDraggingRef.current ? 'none' : 'transform 0.08s ease-out',
-          }}
+      {/* 3. Main Body: Widescreen Canvas + Desktop Sidebar */}
+      <div className="flex-1 relative flex flex-row overflow-hidden w-full h-full">
+        {/* Centered Canvas Container */}
+        <main
+          ref={viewportRef}
+          onWheel={handleWheel}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+          onDoubleClick={handleCanvasDoubleClick}
+          className="flex-1 relative w-full h-full overflow-hidden flex items-center justify-center bg-[#070b13] cursor-grab active:cursor-grabbing"
+          style={{ touchAction: 'none' }}
         >
-          {/* Numbers Grid (All unclaimed numbers look identical so players must search!) */}
+          {/* Centered Matrix Card with Theme Styling */}
           <div
-            className="grid gap-2 select-none"
+            ref={boardRef}
+            className={`relative will-change-transform select-none p-3 sm:p-4 rounded-3xl border transition-all duration-150 ${gridModel.boardBg} ${gridModel.boardBorder}`}
             style={{
-              gridTemplateColumns: `repeat(${gridCols}, minmax(${tileSize - 6}px, ${tileSize}px))`,
+              transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})`,
+              transformOrigin: 'center center',
+              transition: isDraggingRef.current ? 'none' : 'transform 0.08s ease-out',
             }}
           >
-            {match.shuffledGrid.map((num) => {
-              const claim = match.claimedMap[num];
-              const isCountingDown = countdownRemaining !== null && countdownRemaining > 0;
+            {/* Numbers Grid */}
+            <div
+              className="grid gap-2 select-none"
+              style={{
+                gridTemplateColumns: `repeat(${gridCols}, minmax(${tileSize - 6}px, ${tileSize}px))`,
+              }}
+            >
+              {match.shuffledGrid.map((num) => {
+                const claim = match.claimedMap[num];
+                const isCountingDown = countdownRemaining !== null && countdownRemaining > 0;
+                return (
+                  <Tile
+                    key={num}
+                    number={num}
+                    claim={claim}
+                    disabled={match.status !== 'RUNNING' || isCountingDown}
+                    onClaim={handleTileClaim}
+                    isMasked={isCountingDown}
+                    gridModelId={gridModelId}
+                  />
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Bottom Left Minimal Progress indicator */}
+          <div className="absolute bottom-4 left-4 bg-[#111827]/90 backdrop-blur-md px-3 py-1.5 rounded-2xl border border-gray-800 text-[11px] font-mono text-gray-300 z-20 pointer-events-none shadow-xl flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+            <span>
+              Claimed: <strong className="text-cyan-400">{claimedCount}</strong> / {totalNumbers}
+            </span>
+          </div>
+
+          {/* Bottom Right Floating Zoom Controls */}
+          <div className="absolute bottom-4 right-4 flex items-center gap-1.5 bg-[#111827]/95 backdrop-blur-md p-1.5 rounded-2xl border border-gray-800 shadow-2xl z-30">
+            <button
+              type="button"
+              onClick={handleZoomOut}
+              className="p-2 rounded-xl bg-gray-800/80 hover:bg-gray-700 active:scale-95 text-gray-300 hover:text-white transition-all tap-effect cursor-pointer"
+              title="Zoom Out"
+              aria-label="Zoom Out"
+            >
+              <ZoomOut className="w-3.5 h-3.5" />
+            </button>
+
+            <span className="text-[10px] font-mono font-bold text-gray-400 px-1 select-none">
+              {Math.round(zoom * 100)}%
+            </span>
+
+            <button
+              type="button"
+              onClick={handleZoomIn}
+              className="p-2 rounded-xl bg-gray-800/80 hover:bg-gray-700 active:scale-95 text-gray-300 hover:text-white transition-all tap-effect cursor-pointer"
+              title="Zoom In"
+              aria-label="Zoom In"
+            >
+              <ZoomIn className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              type="button"
+              onClick={handleFitScreen}
+              className="px-2.5 py-1.5 rounded-xl bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/40 active:scale-95 text-cyan-300 hover:text-cyan-100 transition-all tap-effect flex items-center gap-1 text-[11px] font-mono font-bold cursor-pointer"
+              title="Center & Fit Board"
+              aria-label="Center Board"
+            >
+              <RotateCcw className="w-3 h-3 text-cyan-400" />
+              <span>Center</span>
+            </button>
+          </div>
+        </main>
+
+        {/* 4. Desktop Widescreen Standings Sidebar (Visible on Laptop / Desktop screens lg+) */}
+        <aside className="hidden lg:flex flex-col w-72 xl:w-80 bg-[#0B0F19]/90 border-l border-gray-800/80 p-4 z-20 overflow-y-auto">
+          <div className="flex items-center justify-between pb-3 border-b border-gray-800 mb-3">
+            <div className="flex items-center gap-2">
+              <Trophy className="w-4 h-4 text-amber-400" />
+              <h3 className="font-display font-black text-sm text-white">Live Leaderboard</h3>
+            </div>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 font-bold">
+              {playersList.length} Players
+            </span>
+          </div>
+
+          {/* Player Standings List */}
+          <div className="space-y-2 flex-1">
+            {playersList.map((player, idx) => {
+              const isSelf = player.id === currentPlayerId;
               return (
-                <Tile
-                  key={num}
-                  number={num}
-                  claim={claim}
-                  disabled={match.status !== 'RUNNING' || isCountingDown}
-                  onClaim={handleTileClaim}
-                  isMasked={isCountingDown}
-                />
+                <div
+                  key={player.id}
+                  className={`flex items-center justify-between p-3 rounded-2xl border transition-all ${
+                    isSelf
+                      ? 'bg-cyan-950/50 border-cyan-500/50 text-cyan-100 shadow-[0_0_15px_rgba(0,240,255,0.15)]'
+                      : 'bg-gray-900/40 border-gray-800/80 text-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="font-mono text-gray-500 font-bold text-xs w-4">
+                      #{idx + 1}
+                    </span>
+                    <span
+                      className="w-3 h-3 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: player.color }}
+                    />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-xs truncate max-w-[110px]">
+                          {player.displayName}
+                        </span>
+                        {isSelf && (
+                          <span className="text-[8px] bg-cyan-400 text-black px-1 rounded font-black uppercase">
+                            YOU
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <span className="font-display font-black text-base text-cyan-400">
+                    {player.score} <span className="text-[10px] text-gray-400 font-mono">pts</span>
+                  </span>
+                </div>
               );
             })}
           </div>
-        </div>
 
+          {/* Quick Progress Card */}
+          <div className="mt-4 p-3 rounded-2xl bg-black/40 border border-gray-800 text-xs space-y-1.5">
+            <div className="flex items-center justify-between text-gray-400 font-mono text-[10px]">
+              <span>Matrix Cleared</span>
+              <span className="text-cyan-300 font-bold">
+                {Math.round((claimedCount / totalNumbers) * 100)}%
+              </span>
+            </div>
+            <div className="w-full h-1.5 rounded-full bg-gray-800 overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-cyan-400 to-amber-400 rounded-full transition-all duration-300"
+                style={{ width: `${Math.round((claimedCount / totalNumbers) * 100)}%` }}
+              />
+            </div>
+          </div>
+        </aside>
+      </div>
 
-        {/* Bottom Left Minimal Progress indicator */}
-        <div className="absolute bottom-4 left-4 bg-[#111827]/80 backdrop-blur-md px-3 py-1.5 rounded-xl border border-gray-800 text-[11px] font-mono text-gray-400 z-20 pointer-events-none">
-          Claimed: <span className="text-cyan-400 font-bold">{claimedCount}</span> / {totalNumbers}
-        </div>
-
-        {/* Bottom Right Floating Zoom & Recenter Controls */}
-        <div className="absolute bottom-4 right-4 flex items-center gap-1.5 bg-[#111827]/90 backdrop-blur-md p-1.5 rounded-2xl border border-gray-800/90 shadow-2xl z-30">
-          <button
-            type="button"
-            onClick={handleZoomIn}
-            className="p-2 rounded-xl bg-gray-800/80 hover:bg-gray-700 active:scale-95 text-gray-300 hover:text-white transition-all tap-effect"
-            title="Zoom In"
-            aria-label="Zoom In"
-          >
-            <ZoomIn className="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={handleZoomOut}
-            className="p-2 rounded-xl bg-gray-800/80 hover:bg-gray-700 active:scale-95 text-gray-300 hover:text-white transition-all tap-effect"
-            title="Zoom Out"
-            aria-label="Zoom Out"
-          >
-            <ZoomOut className="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={handleFitScreen}
-            className="px-2.5 py-1.5 rounded-xl bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/40 active:scale-95 text-cyan-300 hover:text-cyan-100 transition-all tap-effect flex items-center gap-1 text-[11px] font-mono font-bold"
-            title="Recenter and Fit Board"
-            aria-label="Recenter Board"
-          >
-            <Maximize className="w-3 h-3 text-cyan-400" />
-            <span>Center</span>
-          </button>
-        </div>
-      </main>
-
-      {/* 5. Minimal Scores Sheet Modal */}
+      {/* 5. Mobile Scores Sheet Modal */}
       {isScoresOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="w-full max-w-sm bg-[#111827] border border-gray-800 rounded-2xl p-5 shadow-2xl">
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsScoresOpen(false);
+          }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+        >
+          <div className="w-full max-w-sm bg-[#111827] border border-gray-800 rounded-3xl p-5 shadow-2xl">
             <div className="flex items-center justify-between pb-3 border-b border-gray-800 mb-3">
               <div className="flex items-center gap-2">
                 <Trophy className="w-4 h-4 text-amber-400" />
@@ -434,7 +622,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
               </div>
               <button
                 onClick={() => setIsScoresOpen(false)}
-                className="p-1 rounded-lg text-gray-400 hover:text-white"
+                className="p-1.5 rounded-xl bg-gray-800 text-gray-400 hover:text-white"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -475,9 +663,9 @@ export const GameScreen: React.FC<GameScreenProps> = ({
 
             <button
               onClick={() => setIsScoresOpen(false)}
-              className="w-full mt-4 py-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-xs font-semibold text-white"
+              className="w-full mt-4 py-3 rounded-2xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-xs font-bold text-cyan-300 cursor-pointer"
             >
-              Back to Game
+              Resume Game
             </button>
           </div>
         </div>
