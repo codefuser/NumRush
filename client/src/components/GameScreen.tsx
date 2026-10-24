@@ -21,6 +21,7 @@ import { Tile } from './Tile.js';
 import { soundManager } from '../services/audio.js';
 import { socketService } from '../services/socket.js';
 import { gridThemeService, GridModelId, GRID_MODELS } from '../services/gridTheme.js';
+import { backgroundThemeService, BackgroundThemeId, BACKGROUND_THEMES } from '../services/backgroundTheme.js';
 
 interface GameScreenProps {
   room: RoomState;
@@ -43,8 +44,9 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   onClaimNumber,
   onLeaveRoom,
 }) => {
-  // Grid Theme state
+  // Grid Theme and Canvas Background Theme states
   const [gridModelId, setGridModelId] = useState<GridModelId>(() => gridThemeService.getCurrentModelId());
+  const [bgThemeId, setBgThemeId] = useState<BackgroundThemeId>(() => backgroundThemeService.getCurrentThemeId());
 
   useEffect(() => {
     const handleThemeChange = (e: Event) => {
@@ -53,11 +55,22 @@ export const GameScreen: React.FC<GameScreenProps> = ({
         setGridModelId(customEvent.detail);
       }
     };
+    const handleBgChange = (e: Event) => {
+      const customEvent = e as CustomEvent<BackgroundThemeId>;
+      if (customEvent.detail) {
+        setBgThemeId(customEvent.detail);
+      }
+    };
     window.addEventListener('numrush:gridThemeChanged', handleThemeChange);
-    return () => window.removeEventListener('numrush:gridThemeChanged', handleThemeChange);
+    window.addEventListener('numrush:bgThemeChanged', handleBgChange);
+    return () => {
+      window.removeEventListener('numrush:gridThemeChanged', handleThemeChange);
+      window.removeEventListener('numrush:bgThemeChanged', handleBgChange);
+    };
   }, []);
 
   const gridModel = GRID_MODELS[gridModelId] || GRID_MODELS.cyber;
+  const bgTheme = BACKGROUND_THEMES[bgThemeId] || BACKGROUND_THEMES.cosmic;
 
   // Pan and Zoom Canvas State
   const [zoom, setZoom] = useState<number>(1);
@@ -448,13 +461,19 @@ export const GameScreen: React.FC<GameScreenProps> = ({
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
           onDoubleClick={handleCanvasDoubleClick}
-          className="flex-1 relative w-full h-full overflow-hidden flex items-center justify-center bg-[#070b13] cursor-grab active:cursor-grabbing"
-          style={{ touchAction: 'none' }}
+          className={`flex-1 relative w-full h-full overflow-hidden flex items-center justify-center cursor-grab active:cursor-grabbing transition-colors duration-500 ${bgTheme.canvasBg}`}
+          style={{ touchAction: 'none', ...bgTheme.canvasStyle }}
         >
+          {/* Ambient Back Glow */}
+          <div
+            className="absolute w-[500px] h-[500px] rounded-full pointer-events-none blur-3xl opacity-20 -z-0"
+            style={{ background: bgTheme.ambientGlowColor }}
+          />
+
           {/* Centered Matrix Card with Theme Styling */}
           <div
             ref={boardRef}
-            className={`relative will-change-transform select-none p-3 sm:p-4 rounded-3xl border transition-all duration-150 ${gridModel.boardBg} ${gridModel.boardBorder}`}
+            className={`relative z-10 will-change-transform select-none p-3 sm:p-4 rounded-3xl border transition-all duration-150 ${gridModel.boardBg} ${gridModel.boardBorder}`}
             style={{
               transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})`,
               transformOrigin: 'center center',

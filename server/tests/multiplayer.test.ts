@@ -178,4 +178,35 @@ describe('Multiplayer & Concurrency Race Condition Integration Tests', () => {
     expect(claimRes.success).toBe(true);
     expect(room.currentMatch!.currentTarget).toBe(2);
   });
+
+  it('should create COMPLETE_GRID room with durationSeconds 0 (unlimited) and allow claims indefinitely', async () => {
+    const { room, player: host } = roomManager.createRoom('socket-host-cg', {
+      displayName: 'AliceGrid',
+      userId: 'user-alice-cg',
+      settings: { numberRange: { min: 1, max: 10 }, gameMode: 'COMPLETE_GRID' },
+    });
+
+    // Default duration for COMPLETE_GRID should be 0 (unlimited time)
+    expect(room.settings.durationSeconds).toBe(0);
+
+    const startRes = roomManager.startGame(room.id, host.id);
+    expect(startRes.success).toBe(true);
+    expect(room.currentMatch!.settings.durationSeconds).toBe(0);
+
+    // Fast-forward simulation: Even if 400 seconds (longer than standard 180s) have passed
+    room.status = 'PLAYING';
+    room.currentMatch!.status = 'RUNNING';
+    room.currentMatch!.startedAt = Date.now() - 400 * 1000;
+
+    const claimRes = await roomManager.submitClaim(
+      'socket-host-cg',
+      room.id,
+      room.currentMatch!.id,
+      1,
+      'act-host-cg-1'
+    );
+
+    expect(claimRes.success).toBe(true);
+    expect(room.currentMatch!.currentTarget).toBe(2);
+  });
 });

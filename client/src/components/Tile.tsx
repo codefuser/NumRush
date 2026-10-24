@@ -10,11 +10,11 @@ interface TileProps {
   onClaim: (number: number) => void;
   isMasked?: boolean;
   gridModelId?: GridModelId;
+  isWrongFlash?: boolean;
 }
 
 export const Tile: React.FC<TileProps> = React.memo(
-  ({ number, claim, disabled, onClaim, isMasked, gridModelId = 'cyber' }) => {
-    const [isWrong, setIsWrong] = useState(false);
+  ({ number, claim, disabled, onClaim, isMasked, gridModelId = 'cyber', isWrongFlash = false }) => {
     const pointerStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
     const lastTapTimeRef = useRef<number>(0);
 
@@ -99,7 +99,7 @@ export const Tile: React.FC<TileProps> = React.memo(
     }
 
     // 2. Wrong click feedback (temporary red flash & shake)
-    if (isWrong) {
+    if (isWrongFlash) {
       return (
         <button
           type="button"
@@ -137,6 +137,7 @@ export const Tile: React.FC<TileProps> = React.memo(
       prev.disabled === next.disabled &&
       prev.isMasked === next.isMasked &&
       prev.gridModelId === next.gridModelId &&
+      prev.isWrongFlash === next.isWrongFlash &&
       prev.claim?.playerId === next.claim?.playerId &&
       prev.claim?.serverClaimedAt === next.claim?.serverClaimedAt &&
       prev.onClaim === next.onClaim

@@ -64,9 +64,15 @@ export function setupSocketHandlers(io: Server, roomManager: RoomManager) {
         socket.join(result.room.id);
 
         const now = Date.now();
-        const remainingSeconds = result.room.currentMatch && result.room.currentMatch.status === 'RUNNING'
-          ? Math.max(0, Math.ceil((result.room.currentMatch.endsAt - now) / 1000))
-          : (result.room.currentMatch?.settings.durationSeconds ?? result.room.settings.durationSeconds);
+        const isUnlimited = (result.room.currentMatch?.settings.durationSeconds ?? result.room.settings.durationSeconds) <= 0;
+        const elapsedSeconds = result.room.currentMatch?.startedAt
+          ? Math.max(0, Math.floor((now - result.room.currentMatch.startedAt) / 1000))
+          : 0;
+        const remainingSeconds = isUnlimited
+          ? 0
+          : (result.room.currentMatch && result.room.currentMatch.status === 'RUNNING'
+            ? Math.max(0, Math.ceil((result.room.currentMatch.endsAt - now) / 1000))
+            : (result.room.currentMatch?.settings.durationSeconds ?? result.room.settings.durationSeconds));
 
         const countdownRemaining = result.room.currentMatch && result.room.currentMatch.status === 'COUNTDOWN'
           ? Math.max(0, Math.ceil((result.room.currentMatch.countdownEndsAt - now) / 1000))
@@ -78,6 +84,8 @@ export function setupSocketHandlers(io: Server, roomManager: RoomManager) {
           player: result.player,
           serverTime: now,
           remainingSeconds,
+          elapsedSeconds,
+          isUnlimited,
           countdownRemaining,
         };
 
@@ -217,9 +225,15 @@ export function setupSocketHandlers(io: Server, roomManager: RoomManager) {
 
       const player = data.userId ? room.players[data.userId] : undefined;
       const now = Date.now();
-      const remainingSeconds = room.currentMatch && room.currentMatch.status === 'RUNNING'
-        ? Math.max(0, Math.ceil((room.currentMatch.endsAt - now) / 1000))
-        : (room.currentMatch?.settings.durationSeconds ?? room.settings.durationSeconds);
+      const isUnlimited = (room.currentMatch?.settings.durationSeconds ?? room.settings.durationSeconds) <= 0;
+      const elapsedSeconds = room.currentMatch?.startedAt
+        ? Math.max(0, Math.floor((now - room.currentMatch.startedAt) / 1000))
+        : 0;
+      const remainingSeconds = isUnlimited
+        ? 0
+        : (room.currentMatch && room.currentMatch.status === 'RUNNING'
+          ? Math.max(0, Math.ceil((room.currentMatch.endsAt - now) / 1000))
+          : (room.currentMatch?.settings.durationSeconds ?? room.settings.durationSeconds));
 
       const countdownRemaining = room.currentMatch && room.currentMatch.status === 'COUNTDOWN'
         ? Math.max(0, Math.ceil((room.currentMatch.countdownEndsAt - now) / 1000))
@@ -232,6 +246,8 @@ export function setupSocketHandlers(io: Server, roomManager: RoomManager) {
         yourPlayer: player,
         serverTime: now,
         remainingSeconds,
+        elapsedSeconds,
+        isUnlimited,
         countdownRemaining,
       };
 
@@ -256,9 +272,15 @@ export function setupSocketHandlers(io: Server, roomManager: RoomManager) {
       socket.join(result.room.id);
 
       const now = Date.now();
-      const remainingSeconds = result.room.currentMatch && result.room.currentMatch.status === 'RUNNING'
-        ? Math.max(0, Math.ceil((result.room.currentMatch.endsAt - now) / 1000))
-        : (result.room.currentMatch?.settings.durationSeconds ?? result.room.settings.durationSeconds);
+      const isUnlimited = (result.room.currentMatch?.settings.durationSeconds ?? result.room.settings.durationSeconds) <= 0;
+      const elapsedSeconds = result.room.currentMatch?.startedAt
+        ? Math.max(0, Math.floor((now - result.room.currentMatch.startedAt) / 1000))
+        : 0;
+      const remainingSeconds = isUnlimited
+        ? 0
+        : (result.room.currentMatch && result.room.currentMatch.status === 'RUNNING'
+          ? Math.max(0, Math.ceil((result.room.currentMatch.endsAt - now) / 1000))
+          : (result.room.currentMatch?.settings.durationSeconds ?? result.room.settings.durationSeconds));
 
       const countdownRemaining = result.room.currentMatch && result.room.currentMatch.status === 'COUNTDOWN'
         ? Math.max(0, Math.ceil((result.room.currentMatch.countdownEndsAt - now) / 1000))
@@ -271,6 +293,8 @@ export function setupSocketHandlers(io: Server, roomManager: RoomManager) {
         yourPlayer: result.player,
         serverTime: now,
         remainingSeconds,
+        elapsedSeconds,
+        isUnlimited,
         countdownRemaining,
       };
 

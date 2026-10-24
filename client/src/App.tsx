@@ -139,7 +139,7 @@ export const App: React.FC = () => {
     });
 
     // B. Room Joined
-    socket.on('room:joined', (data: { room: RoomState; remainingSeconds?: number; countdownRemaining?: number | null }) => {
+    socket.on('room:joined', (data: { room: RoomState; remainingSeconds?: number; elapsedSeconds?: number; isUnlimited?: boolean; countdownRemaining?: number | null }) => {
       setIsLoading(false);
       setIsJoinOpen(false);
       setRoom(data.room);
@@ -154,11 +154,14 @@ export const App: React.FC = () => {
 
       if ((data.room.status === 'PLAYING' || data.room.status === 'COUNTDOWN') && data.room.currentMatch) {
         setMatch(data.room.currentMatch);
+        if (data.elapsedSeconds !== undefined) {
+          setServerElapsedSeconds(data.elapsedSeconds);
+        }
         if (data.remainingSeconds !== undefined) {
           setServerRemainingSeconds(data.remainingSeconds);
         } else if (data.room.currentMatch.endsAt) {
-          const remaining = Math.max(0, Math.ceil((data.room.currentMatch.endsAt - Date.now()) / 1000));
-          setServerRemainingSeconds(remaining);
+          const isUnlimited = (data.room.currentMatch.settings?.durationSeconds ?? 0) <= 0;
+          setServerRemainingSeconds(isUnlimited ? 0 : Math.max(0, Math.ceil((data.room.currentMatch.endsAt - Date.now()) / 1000)));
         }
 
         if (data.room.status === 'COUNTDOWN') {
@@ -409,9 +412,13 @@ export const App: React.FC = () => {
         setRoom(data.room);
         if (data.currentMatch && (data.currentMatch.status === 'RUNNING' || data.room.status === 'PLAYING')) {
           setMatch(data.currentMatch);
+          if (data.elapsedSeconds !== undefined) {
+            setServerElapsedSeconds(data.elapsedSeconds);
+          }
+          const isUnlimited = (data.currentMatch.settings?.durationSeconds ?? data.room.settings?.durationSeconds ?? 0) <= 0;
           const remaining = data.remainingSeconds !== undefined
             ? data.remainingSeconds
-            : Math.max(0, Math.ceil((data.currentMatch.endsAt - Date.now()) / 1000));
+            : (isUnlimited ? 0 : Math.max(0, Math.ceil((data.currentMatch.endsAt - Date.now()) / 1000)));
           setServerRemainingSeconds(remaining);
           setCountdownRemaining(null);
           setScreen('GAME');

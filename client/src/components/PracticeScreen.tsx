@@ -19,6 +19,8 @@ import { soloStorage } from '../services/soloStorage.js';
 import { api } from '../services/api.js';
 import { playerStatsService } from '../services/playerStatsService.js';
 import { gridThemeService, GRID_MODELS, GridModelId } from '../services/gridTheme.js';
+import { backgroundThemeService, BACKGROUND_THEMES, BackgroundThemeId } from '../services/backgroundTheme.js';
+import { Tile } from './Tile.js';
 import type { SoloGameConfig } from './SoloSetupModal.js';
 
 interface PracticeScreenProps {
@@ -53,22 +55,30 @@ export const PracticeScreen: React.FC<PracticeScreenProps> = ({
   const [isMuted, setIsMuted] = useState<boolean>(soundManager.isMuted());
   const [isFullscreen, setIsFullscreen] = useState<boolean>(() => !!document.fullscreenElement);
   const [gridModelId, setGridModelId] = useState<GridModelId>(() => gridThemeService.getCurrentModelId());
+  const [bgThemeId, setBgThemeId] = useState<BackgroundThemeId>(() => backgroundThemeService.getCurrentThemeId());
 
   useEffect(() => {
     const handleThemeChange = (e: Event) => {
       const customEvent = e as CustomEvent<GridModelId>;
       if (customEvent.detail) setGridModelId(customEvent.detail);
     };
+    const handleBgChange = (e: Event) => {
+      const customEvent = e as CustomEvent<BackgroundThemeId>;
+      if (customEvent.detail) setBgThemeId(customEvent.detail);
+    };
     const handleFsChange = () => setIsFullscreen(!!document.fullscreenElement);
     window.addEventListener('numrush:gridThemeChanged', handleThemeChange);
+    window.addEventListener('numrush:bgThemeChanged', handleBgChange);
     document.addEventListener('fullscreenchange', handleFsChange);
     return () => {
       window.removeEventListener('numrush:gridThemeChanged', handleThemeChange);
+      window.removeEventListener('numrush:bgThemeChanged', handleBgChange);
       document.removeEventListener('fullscreenchange', handleFsChange);
     };
   }, []);
 
   const gridModel = GRID_MODELS[gridModelId] || GRID_MODELS.cyber;
+  const bgTheme = BACKGROUND_THEMES[bgThemeId] || BACKGROUND_THEMES.cosmic;
 
   const toggleFullscreen = () => {
     try {
@@ -529,13 +539,19 @@ export const PracticeScreen: React.FC<PracticeScreenProps> = ({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
-        className="flex-1 relative w-full h-full overflow-hidden flex items-center justify-center bg-[#070b13] cursor-grab active:cursor-grabbing"
-        style={{ touchAction: 'none' }}
+        className={`flex-1 relative w-full h-full overflow-hidden flex items-center justify-center cursor-grab active:cursor-grabbing transition-colors duration-500 ${bgTheme.canvasBg}`}
+        style={{ touchAction: 'none', ...bgTheme.canvasStyle }}
       >
+        {/* Ambient Back Glow */}
+        <div
+          className="absolute w-[500px] h-[500px] rounded-full pointer-events-none blur-3xl opacity-20 -z-0"
+          style={{ background: bgTheme.ambientGlowColor }}
+        />
+
         {/* Centered Matrix Card */}
         <div
           ref={boardRef}
-          className={`relative will-change-transform select-none p-3 rounded-3xl border transition-all duration-150 ${gridModel.boardBg} ${gridModel.boardBorder}`}
+          className={`relative z-10 will-change-transform select-none p-3 sm:p-4 rounded-3xl border transition-all duration-150 ${gridModel.boardBg} ${gridModel.boardBorder}`}
           style={{
             transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})`,
             transformOrigin: 'center center',
@@ -551,35 +567,28 @@ export const PracticeScreen: React.FC<PracticeScreenProps> = ({
           >
             {grid.map((num) => {
               const isClaimed = claimedSet.has(num);
-              const isWrongFlash = wrongNumFlash === num;
-
               return (
-                <button
+                <Tile
                   key={num}
-                  type="button"
-                  onClick={() => handleTileClick(num)}
+                  number={num}
+                  claim={
+                    isClaimed
+                      ? {
+                          number: num,
+                          playerId: userId || 'solo',
+                          playerName: displayName || 'Hunter',
+                          playerColor: '#10B981',
+                          serverClaimedAt: 0,
+                          actionId: '',
+                        }
+                      : undefined
+                  }
                   disabled={isClaimed || isCountingDown}
-                  className={`flex items-center justify-center aspect-square rounded-xl font-display font-black text-sm sm:text-base select-none transition-all duration-75 focus:outline-none border touch-manipulation active:scale-95 active:brightness-125 ${
-                    isCountingDown
-                      ? 'bg-gradient-to-b from-[#131B2A] to-[#0A0F1A] border-cyan-500/20 text-cyan-500/30'
-                      : isWrongFlash
-                      ? 'bg-rose-950 border-2 border-rose-500 text-rose-300 animate-shake shadow-[0_0_15px_rgba(244,63,94,0.4)]'
-                      : isClaimed
-                      ? 'bg-[#080E1A]/80 border-emerald-500/30 text-emerald-500/40 line-through opacity-45 scale-[0.97]'
-                      : `${gridModel.tileDefault} ${gridModel.tileHover} ${gridModel.tileText} ${gridModel.tileShadow} cursor-pointer`
-                  }`}
-                >
-                  {isCountingDown ? (
-                    <span className="w-2 h-2 rounded-full bg-cyan-500/20" />
-                  ) : isClaimed ? (
-                    <span className="flex items-center gap-0.5">
-                      {num}
-                      <Check className="w-2.5 h-2.5 inline text-emerald-400 ml-0.5" />
-                    </span>
-                  ) : (
-                    num
-                  )}
-                </button>
+                  onClaim={handleTileClick}
+                  isMasked={isCountingDown}
+                  gridModelId={gridModelId}
+                  isWrongFlash={wrongNumFlash === num}
+                />
               );
             })}
           </div>

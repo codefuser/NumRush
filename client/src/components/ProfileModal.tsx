@@ -17,6 +17,7 @@ import {
   Flame,
   Crown,
   LayoutGrid,
+  Palette,
   Maximize,
   Minimize,
 } from 'lucide-react';
@@ -24,6 +25,7 @@ import { api } from '../services/api.js';
 import { soundManager } from '../services/audio.js';
 import { playerStatsService } from '../services/playerStatsService.js';
 import { gridThemeService, GRID_MODELS, GridModelId } from '../services/gridTheme.js';
+import { backgroundThemeService, BACKGROUND_THEMES, BackgroundThemeId } from '../services/backgroundTheme.js';
 import type { PersistentPlayerStats } from '../types/index.js';
 
 interface ProfileModalProps {
@@ -62,6 +64,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [isMuted, setIsMuted] = useState(soundManager.isMuted());
   const [isFullscreen, setIsFullscreen] = useState(() => !!document.fullscreenElement);
   const [selectedGridModel, setSelectedGridModel] = useState<GridModelId>(() => gridThemeService.getCurrentModelId());
+  const [selectedBgTheme, setSelectedBgTheme] = useState<BackgroundThemeId>(() => backgroundThemeService.getCurrentThemeId());
+  const [bgCategoryFilter, setBgCategoryFilter] = useState<'ALL' | 'Space' | 'Cyber' | 'Gradient' | 'Minimal'>('ALL');
 
   const [vibrationEnabled, setVibrationEnabled] = useState(() => {
     return localStorage.getItem('numrush_vibration') !== 'false';
@@ -114,6 +118,12 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const handleGridModelSelect = (id: GridModelId) => {
     setSelectedGridModel(id);
     gridThemeService.setModelId(id);
+    soundManager.playCorrect();
+  };
+
+  const handleBgThemeSelect = (id: BackgroundThemeId) => {
+    setSelectedBgTheme(id);
+    backgroundThemeService.setThemeId(id);
     soundManager.playCorrect();
   };
 
@@ -363,6 +373,102 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                   </button>
                 );
               })}
+            </div>
+          </div>
+
+          {/* Grid Background Themes (10 rich themes with preview & category filters) */}
+          <div className="p-3.5 rounded-2xl bg-black/40 border border-gray-800 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+              <span className="text-[10px] font-mono uppercase text-amber-400 font-bold tracking-wider flex items-center gap-1.5">
+                <Palette className="w-3.5 h-3.5" />
+                Grid Background Canvas Themes ({Object.keys(BACKGROUND_THEMES).length} Themes)
+              </span>
+              <span className="text-[10px] font-mono text-cyan-300 font-bold">
+                Active: {BACKGROUND_THEMES[selectedBgTheme]?.name}
+              </span>
+            </div>
+
+            {/* Category Filter Chips */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+              {(['ALL', 'Space', 'Cyber', 'Gradient', 'Minimal'] as const).map((cat) => {
+                const count = cat === 'ALL'
+                  ? Object.keys(BACKGROUND_THEMES).length
+                  : Object.values(BACKGROUND_THEMES).filter((t) => t.category === cat).length;
+                const isCatActive = bgCategoryFilter === cat;
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setBgCategoryFilter(cat)}
+                    className={`px-2.5 py-1 rounded-xl text-[10px] font-mono font-bold whitespace-nowrap transition-all cursor-pointer ${
+                      isCatActive
+                        ? 'bg-amber-500/25 text-amber-300 border border-amber-400/80 shadow-[0_0_10px_rgba(245,158,11,0.25)]'
+                        : 'bg-gray-900/60 text-gray-400 border border-gray-800 hover:border-gray-700'
+                    }`}
+                  >
+                    {cat} ({count})
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Themes Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {Object.values(BACKGROUND_THEMES)
+                .filter((theme) => bgCategoryFilter === 'ALL' || theme.category === bgCategoryFilter)
+                .map((theme) => {
+                  const isSelected = selectedBgTheme === theme.id;
+                  return (
+                    <button
+                      key={theme.id}
+                      type="button"
+                      onClick={() => handleBgThemeSelect(theme.id)}
+                      className={`p-2.5 rounded-2xl border text-left transition-all cursor-pointer relative overflow-hidden group flex flex-col justify-between ${
+                        isSelected
+                          ? 'bg-amber-500/15 border-amber-400 shadow-[0_0_18px_rgba(245,158,11,0.3)] ring-1 ring-amber-400'
+                          : 'bg-gray-900/60 border-gray-800 hover:border-gray-700'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-display font-bold text-xs text-white truncate max-w-[100px]">
+                            {theme.name}
+                          </span>
+                          {isSelected ? (
+                            <span className="w-4 h-4 rounded-full bg-amber-400 flex items-center justify-center text-black flex-shrink-0">
+                              <Check className="w-3 h-3 stroke-[3]" />
+                            </span>
+                          ) : (
+                            <span className="text-[8px] font-mono uppercase px-1 py-0.2 rounded bg-black/60 text-gray-400 border border-gray-800">
+                              {theme.category}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Visual Canvas & Matrix Mock Preview Box */}
+                        <div
+                          className={`h-11 w-full rounded-xl ${theme.previewBg} border ${theme.previewBorder} relative overflow-hidden flex items-center justify-center shadow-inner`}
+                        >
+                          {/* Ambient glow in preview */}
+                          <div
+                            className="absolute w-12 h-12 rounded-full blur-md opacity-70 pointer-events-none"
+                            style={{ background: theme.ambientGlowColor }}
+                          />
+                          {/* Mini Grid board */}
+                          <div className="relative z-10 grid grid-cols-3 gap-0.5 p-1 rounded-md bg-black/50 border border-white/10 shadow-sm">
+                            <span className="w-2.5 h-2.5 rounded-[3px] bg-cyan-400/40 border border-cyan-300/40 text-[5px] flex items-center justify-center text-cyan-200 font-bold">1</span>
+                            <span className="w-2.5 h-2.5 rounded-[3px] bg-white/20 border border-white/20 text-[5px] flex items-center justify-center text-gray-300 font-bold">2</span>
+                            <span className="w-2.5 h-2.5 rounded-[3px] bg-amber-400/50 border border-amber-300/50 text-[5px] flex items-center justify-center text-amber-200 font-bold">★</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <span className="text-[9px] text-gray-400 mt-1.5 block line-clamp-1 leading-tight">
+                        {theme.description}
+                      </span>
+                    </button>
+                  );
+                })}
             </div>
           </div>
 
