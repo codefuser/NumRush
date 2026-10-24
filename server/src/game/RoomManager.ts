@@ -413,7 +413,11 @@ export class RoomManager {
       maxTarget: room.settings.numberRange.max,
       startedAt: countdownEndsAt,
       countdownEndsAt,
-      endsAt: countdownEndsAt + (room.settings.durationSeconds > 0 ? room.settings.durationSeconds * 1000 : 86400000),
+      endsAt: countdownEndsAt + (
+        room.settings.gameMode === 'COMPLETE_GRID' || !room.settings.durationSeconds || room.settings.durationSeconds <= 0 || room.settings.durationSeconds >= 86400
+          ? 86400000
+          : room.settings.durationSeconds * 1000
+      ),
       claims: [],
       claimedMap: {},
       playerStats,
@@ -474,7 +478,8 @@ export class RoomManager {
     room.currentMatch.status = 'RUNNING';
     room.currentMatch.startedAt = Date.now();
     room.currentMatch.lastClaimTimestamp = Date.now();
-    room.currentMatch.endsAt = room.settings.durationSeconds > 0
+    const isUnlimited = room.settings.gameMode === 'COMPLETE_GRID' || !room.settings.durationSeconds || room.settings.durationSeconds <= 0 || room.settings.durationSeconds >= 86400;
+    room.currentMatch.endsAt = !isUnlimited
       ? Date.now() + room.settings.durationSeconds * 1000
       : Date.now() + 86400000;
 
@@ -510,7 +515,7 @@ export class RoomManager {
       }
 
       const now = Date.now();
-      const isUnlimited = !room.settings.durationSeconds || room.settings.durationSeconds <= 0;
+      const isUnlimited = room.settings.gameMode === 'COMPLETE_GRID' || !room.settings.durationSeconds || room.settings.durationSeconds <= 0 || room.settings.durationSeconds >= 86400;
       const remainingSeconds = isUnlimited
         ? 0
         : Math.max(0, Math.ceil((room.currentMatch.endsAt - now) / 1000));

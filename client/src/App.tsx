@@ -373,7 +373,24 @@ export const App: React.FC = () => {
     });
 
     // L. Game Finished
-    socket.on('game:finished', (data: { results: MatchResults }) => {
+    socket.on('game:finished', (data: { results: MatchResults; reason?: string }) => {
+      // Guard against erroneous premature "Time expired" on Complete Grid matches
+      const currentMatch = matchRef.current;
+      const isCompleteGrid =
+        currentMatch?.settings.gameMode === 'COMPLETE_GRID' ||
+        (currentMatch?.settings.durationSeconds ?? 0) >= 86400 ||
+        (currentMatch?.settings.durationSeconds ?? 0) <= 0;
+
+      if (
+        isCompleteGrid &&
+        data.reason === 'Time expired' &&
+        data.results.claimedNumbers === 0 &&
+        data.results.durationSeconds <= 3
+      ) {
+        console.warn('Blocked premature legacy server "Time expired" signal on Complete Grid match');
+        return;
+      }
+
       setResults(data.results);
       setCountdownRemaining(null);
       setScreen('RESULTS');
@@ -629,6 +646,7 @@ export const App: React.FC = () => {
             currentPlayerId={userId}
             countdownRemaining={countdownRemaining}
             serverRemainingSeconds={serverRemainingSeconds}
+            serverElapsedSeconds={serverElapsedSeconds}
             onClaimNumber={handleClaimNumber}
             onLeaveRoom={handleLeaveRoom}
           />

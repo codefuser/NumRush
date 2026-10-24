@@ -16,7 +16,7 @@ export const CreateGameModal: React.FC<CreateGameModalProps> = ({ onClose, onCre
   const [playerLimit, setPlayerLimit] = useState<number>(4);
   const [gameMode, setGameMode] = useState<GameMode>('COMPLETE_GRID');
   const [durationPreset, setDurationPreset] = useState<number>(180);
-  const [completeGridDuration, setCompleteGridDuration] = useState<number>(0); // 0 = Unlimited / No Time Limit
+  const [completeGridDuration, setCompleteGridDuration] = useState<number>(86400); // 86400 (24h) = Unlimited / No Time Limit
   const [isPrivate, setIsPrivate] = useState<boolean>(false);
   const [countdown, setCountdown] = useState<number>(5);
   const [wrongClickPenalty, setWrongClickPenalty] = useState<WrongClickPenalty>('NONE');
@@ -275,12 +275,12 @@ export const CreateGameModal: React.FC<CreateGameModalProps> = ({ onClose, onCre
                 <div className="flex items-center justify-between text-xs mb-1.5 font-mono">
                   <span className="text-gray-400">Time Limit:</span>
                   <span className="text-cyan-300 font-bold">
-                    {completeGridDuration === 0 ? 'Unlimited (Full Clear)' : `${completeGridDuration / 60} Minutes`}
+                    {completeGridDuration >= 86400 || completeGridDuration === 0 ? 'Unlimited (Full Clear)' : `${completeGridDuration / 60} Minutes`}
                   </span>
                 </div>
                 <div className="grid grid-cols-4 gap-1.5">
                   {[
-                    { label: 'No Limit', sec: 0 },
+                    { label: 'No Limit', sec: 86400 },
                     { label: '3m', sec: 180 },
                     { label: '5m', sec: 300 },
                     { label: '10m', sec: 600 },

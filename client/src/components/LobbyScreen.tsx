@@ -150,7 +150,9 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
           <div className="p-2 rounded-xl bg-black/40 border border-gray-800/80 text-center">
             <span className="text-gray-400 block text-[9px] uppercase font-mono tracking-wider">Limit</span>
             <span className="font-display font-black text-xs text-amber-400">
-              {room.settings.durationSeconds > 0 ? `${Math.round(room.settings.durationSeconds / 60)} Mins` : 'Unlimited'}
+              {room.settings.gameMode === 'COMPLETE_GRID' || !room.settings.durationSeconds || room.settings.durationSeconds <= 0 || room.settings.durationSeconds >= 86400
+                ? 'Unlimited'
+                : `${Math.round(room.settings.durationSeconds / 60)} Mins`}
             </span>
           </div>
 

@@ -149,7 +149,27 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const isUnlimitedMode = !match.settings.durationSeconds || match.settings.durationSeconds <= 0;
+  const isUnlimitedMode =
+    match.settings.gameMode === 'COMPLETE_GRID' ||
+    !match.settings.durationSeconds ||
+    match.settings.durationSeconds <= 0 ||
+    match.settings.durationSeconds >= 86400;
+
+  // Local ticker for smooth count-up timer in Complete Grid / Unlimited matches
+  const [localElapsed, setLocalElapsed] = useState<number>(serverElapsedSeconds);
+
+  useEffect(() => {
+    setLocalElapsed(serverElapsedSeconds);
+  }, [serverElapsedSeconds]);
+
+  useEffect(() => {
+    if (!isUnlimitedMode || match.status !== 'RUNNING') return;
+    const interval = setInterval(() => {
+      setLocalElapsed((prev) => prev + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isUnlimitedMode, match.status]);
+
   const isLowTime = !isUnlimitedMode && serverRemainingSeconds <= 30 && match.status === 'RUNNING';
   const totalNumbers = match.maxTarget - match.settings.numberRange.min + 1;
   const claimedCount = Object.keys(match.claimedMap).length;
@@ -389,7 +409,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
               <Clock className="w-3.5 h-3.5" />
               <span>
                 {isUnlimitedMode
-                  ? `Elapsed: ${formatTime(serverElapsedSeconds)}`
+                  ? `Elapsed: ${formatTime(localElapsed)}`
                   : formatTime(serverRemainingSeconds)}
               </span>
             </div>

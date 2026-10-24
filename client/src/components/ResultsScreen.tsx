@@ -94,10 +94,12 @@ Play at: ${window.location.origin}`;
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-orange-400">
               VICTORY! YOU WON!
             </span>
-          ) : (
+          ) : results.winner ? (
             <span>
-              <span className="text-cyan-400">{results.winner?.displayName}</span> Wins!
+              <span className="text-cyan-400">{results.winner.displayName}</span> Wins!
             </span>
+          ) : (
+            <span className="text-cyan-300">Match Completed!</span>
           )}
         </h1>
 
