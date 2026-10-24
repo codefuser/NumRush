@@ -358,15 +358,20 @@ export const PracticeScreen: React.FC<PracticeScreenProps> = ({
     if (isDraggingRef.current && activePointersRef.current.size === 1) {
       const dx = e.clientX - dragStartRef.current.x;
       const dy = e.clientY - dragStartRef.current.y;
+      const distance = Math.hypot(dx, dy);
 
-      if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
+      if (distance > 18) {
         hasMovedRef.current = true;
-      }
+        const maxPanX = viewportRef.current ? Math.round(viewportRef.current.clientWidth * 0.45) : 350;
+        const maxPanY = viewportRef.current ? Math.round(viewportRef.current.clientHeight * 0.45) : 350;
+        const nextX = Math.max(-maxPanX, Math.min(maxPanX, panStartRef.current.x + dx));
+        const nextY = Math.max(-maxPanY, Math.min(maxPanY, panStartRef.current.y + dy));
 
-      setPan({
-        x: panStartRef.current.x + dx,
-        y: panStartRef.current.y + dy,
-      });
+        setPan({
+          x: nextX,
+          y: nextY,
+        });
+      }
     }
   };
 
@@ -375,6 +380,7 @@ export const PracticeScreen: React.FC<PracticeScreenProps> = ({
     if (activePointersRef.current.size === 0) {
       isDraggingRef.current = false;
       initialPinchDistRef.current = null;
+      hasMovedRef.current = false;
     }
   };
 

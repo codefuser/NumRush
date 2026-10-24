@@ -13,10 +13,26 @@ interface TileProps {
 export const Tile: React.FC<TileProps> = React.memo(
   ({ number, claim, disabled, onClaim, isMasked }) => {
     const [isWrong, setIsWrong] = useState(false);
+    const pointerStartRef = React.useRef<{ x: number; y: number } | null>(null);
 
-    const handleClick = (e: React.MouseEvent | React.TouchEvent) => {
+    const handlePointerDown = (e: React.PointerEvent) => {
+      pointerStartRef.current = { x: e.clientX, y: e.clientY };
+    };
+
+    const handleClick = (e: React.MouseEvent) => {
       e.stopPropagation();
       if (disabled || claim || isMasked) return;
+
+      // If pointer moved more than 18px during this gesture, it was a drag/pan
+      if (pointerStartRef.current) {
+        const dx = Math.abs(e.clientX - pointerStartRef.current.x);
+        const dy = Math.abs(e.clientY - pointerStartRef.current.y);
+        pointerStartRef.current = null;
+        if (dx > 18 || dy > 18) {
+          return;
+        }
+      }
+
       onClaim(number);
     };
 
@@ -79,6 +95,7 @@ export const Tile: React.FC<TileProps> = React.memo(
       <button
         type="button"
         data-number={number}
+        onPointerDown={handlePointerDown}
         onClick={handleClick}
         disabled={disabled}
         className={`flex items-center justify-center aspect-square rounded-xl font-display font-black text-xs sm:text-base text-slate-100 bg-gradient-to-b from-[#1C263B] to-[#0E1726] hover:from-[#24314C] hover:to-[#131F33] border border-slate-700/80 hover:border-cyan-400 active:scale-95 active:brightness-125 transition-all duration-75 select-none focus:outline-none shadow-[0_2px_8px_rgba(0,0,0,0.4)] ${

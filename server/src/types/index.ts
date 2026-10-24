@@ -145,6 +145,7 @@ export interface ClaimNumberPayload {
   matchId: string;
   number: number;
   actionId: string;
+  userId?: string;
   clientTimestamp?: number;
 }
 

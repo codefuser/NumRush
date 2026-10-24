@@ -508,13 +508,22 @@ export const App: React.FC = () => {
       const socket = socketService.getSocket();
       const actionId = `act_${userId}_${number}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
-      socket.emit('game:claimNumber', {
-        roomId: curRoom.id,
-        matchId: curMatch.id,
-        number,
-        actionId,
-        clientTimestamp: Date.now(),
-      });
+      socket.emit(
+        'game:claimNumber',
+        {
+          roomId: curRoom.id,
+          matchId: curMatch.id,
+          number,
+          actionId,
+          userId,
+          clientTimestamp: Date.now(),
+        },
+        (res: any) => {
+          if (res && !res.success) {
+            console.warn('[Claim] Server rejected claim:', res.reason);
+          }
+        }
+      );
     },
     [userId]
   );

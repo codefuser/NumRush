@@ -171,7 +171,8 @@ export function setupSocketHandlers(io: Server, roomManager: RoomManager) {
           payload.roomId,
           payload.matchId,
           payload.number,
-          payload.actionId
+          payload.actionId,
+          payload.userId
         );
 
         if (callback) callback(result);

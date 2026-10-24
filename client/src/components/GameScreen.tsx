@@ -10,10 +10,12 @@ import {
   LogOut,
   X,
   Crown,
+  WifiOff,
 } from 'lucide-react';
 import type { RoomState, MatchState } from '../types/index.js';
 import { Tile } from './Tile.js';
 import { soundManager } from '../services/audio.js';
+import { socketService } from '../services/socket.js';
 
 interface GameScreenProps {
   room: RoomState;
@@ -39,6 +41,13 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isScoresOpen, setIsScoresOpen] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(soundManager.isMuted());
+  const [socketStatus, setSocketStatus] = useState<'connected' | 'disconnected' | 'connecting'>('connected');
+
+  useEffect(() => {
+    return socketService.onStatusChange((status) => {
+      setSocketStatus(status);
+    });
+  }, []);
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
@@ -191,13 +200,18 @@ export const GameScreen: React.FC<GameScreenProps> = ({
       const dy = e.clientY - dragStartRef.current.y;
       const distance = Math.hypot(dx, dy);
 
-      // Deadzone threshold for mobile touch taps (15px):
-      // Ignore tiny finger jitter so taps are never blocked or swallowed!
+      // Deadzone threshold for mobile touch taps (15px)
       if (distance > 15) {
         hasMovedRef.current = true;
+        // Clamp panning so the board can never leave the screen
+        const maxPanX = viewportRef.current ? Math.round(viewportRef.current.clientWidth * 0.45) : 350;
+        const maxPanY = viewportRef.current ? Math.round(viewportRef.current.clientHeight * 0.45) : 350;
+        const nextX = Math.max(-maxPanX, Math.min(maxPanX, panStartRef.current.x + dx));
+        const nextY = Math.max(-maxPanY, Math.min(maxPanY, panStartRef.current.y + dy));
+
         setPan({
-          x: panStartRef.current.x + dx,
-          y: panStartRef.current.y + dy,
+          x: nextX,
+          y: nextY,
         });
       }
     }
@@ -209,18 +223,14 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     if (activePointersRef.current.size === 0) {
       isDraggingRef.current = false;
       initialPinchDistRef.current = null;
-      // Reset moved flag after synthetic click fires
-      setTimeout(() => {
-        hasMovedRef.current = false;
-      }, 80);
+      hasMovedRef.current = false;
     }
   };
 
-  // Claim click handler: only trigger if user genuinely panned/dragged
-  const handleTileClaim = (num: number) => {
-    if (hasMovedRef.current) return;
+  // Claim click handler: Tile component validates tap vs drag distance locally
+  const handleTileClaim = useCallback((num: number) => {
     onClaimNumber(num);
-  };
+  }, [onClaimNumber]);
 
   const toggleSound = () => {
     const muted = soundManager.toggleMute();
@@ -291,6 +301,14 @@ export const GameScreen: React.FC<GameScreenProps> = ({
             </div>
           </div>
         </div>
+
+        {/* Offline / Reconnecting Warning */}
+        {socketStatus !== 'connected' && (
+          <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-950/90 border border-rose-500/60 text-rose-300 text-[10px] font-mono animate-pulse">
+            <WifiOff className="w-3 h-3 text-rose-400" />
+            <span className="font-bold">Reconnecting...</span>
+          </div>
+        )}
 
         {/* Center: TARGET NUMBER TO HUNT (Clear, prominent, non-distracting) */}
         <div className="flex items-center gap-2 px-3 py-1 rounded-xl bg-amber-500/10 border border-amber-500/40 shadow-[0_0_15px_rgba(245,158,11,0.2)]">
@@ -370,6 +388,38 @@ export const GameScreen: React.FC<GameScreenProps> = ({
         {/* Bottom Left Minimal Progress indicator */}
         <div className="absolute bottom-4 left-4 bg-[#111827]/80 backdrop-blur-md px-3 py-1.5 rounded-xl border border-gray-800 text-[11px] font-mono text-gray-400 z-20 pointer-events-none">
           Claimed: <span className="text-cyan-400 font-bold">{claimedCount}</span> / {totalNumbers}
+        </div>
+
+        {/* Bottom Right Floating Zoom & Recenter Controls */}
+        <div className="absolute bottom-4 right-4 flex items-center gap-1.5 bg-[#111827]/90 backdrop-blur-md p-1.5 rounded-2xl border border-gray-800/90 shadow-2xl z-30">
+          <button
+            type="button"
+            onClick={handleZoomIn}
+            className="p-2 rounded-xl bg-gray-800/80 hover:bg-gray-700 active:scale-95 text-gray-300 hover:text-white transition-all tap-effect"
+            title="Zoom In"
+            aria-label="Zoom In"
+          >
+            <ZoomIn className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={handleZoomOut}
+            className="p-2 rounded-xl bg-gray-800/80 hover:bg-gray-700 active:scale-95 text-gray-300 hover:text-white transition-all tap-effect"
+            title="Zoom Out"
+            aria-label="Zoom Out"
+          >
+            <ZoomOut className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={handleFitScreen}
+            className="px-2.5 py-1.5 rounded-xl bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/40 active:scale-95 text-cyan-300 hover:text-cyan-100 transition-all tap-effect flex items-center gap-1 text-[11px] font-mono font-bold"
+            title="Recenter and Fit Board"
+            aria-label="Recenter Board"
+          >
+            <Maximize className="w-3 h-3 text-cyan-400" />
+            <span>Center</span>
+          </button>
         </div>
       </main>
 

@@ -532,7 +532,8 @@ export class RoomManager {
     roomId: string,
     matchId: string,
     number: number,
-    actionId: string
+    actionId: string,
+    userId?: string
   ): Promise<{ success: boolean; reason?: string; matchFinished?: boolean }> {
     return this.enqueueRoomOperation(roomId, async () => {
       const room = this.rooms.get(roomId);
@@ -540,7 +541,18 @@ export class RoomManager {
         return { success: false, reason: 'Match is not active' };
       }
 
-      const socketInfo = this.socketToPlayerMap.get(socketId);
+      let socketInfo = this.socketToPlayerMap.get(socketId);
+      // Seamless auto-rebind if player reconnected with a new socketId
+      if (!socketInfo && userId && room.players[userId]) {
+        const player = room.players[userId];
+        player.socketId = socketId;
+        player.isConnected = true;
+        player.disconnectedAt = undefined;
+        player.lastActiveAt = Date.now();
+        this.socketToPlayerMap.set(socketId, { roomId, playerId: userId });
+        socketInfo = { roomId, playerId: userId };
+      }
+
       if (!socketInfo || socketInfo.roomId !== roomId) {
         return { success: false, reason: 'Unauthorized player claim' };
       }
@@ -556,6 +568,12 @@ export class RoomManager {
       // Check eligibility
       const eligibility = GameRules.validateClaimEligibility(match, player.id, actionId, now);
       if (!eligibility.eligible) {
+        this.sendToSocket(socketId, 'game:claimRejected', {
+          number,
+          reason: eligibility.reason,
+          currentTarget: match.currentTarget,
+          claimedMap: match.claimedMap,
+        });
         return { success: false, reason: eligibility.reason };
       }
 
