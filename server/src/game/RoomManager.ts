@@ -25,6 +25,8 @@ export class RoomManager {
   private roomCodeToId: Map<string, string> = new Map();
   private socketToPlayerMap: Map<string, { roomId: string; playerId: string }> = new Map();
   private operationQueues: Map<string, RoomOperationQueue> = new Map();
+  private countdownTimers: Map<string, NodeJS.Timeout> = new Map();
+  private matchTimers: Map<string, NodeJS.Timeout> = new Map();
 
   // Callbacks for broadcasting events through Socket.IO
   private broadcastToRoom: (roomId: string, event: string, payload: unknown) => void = () => {};
@@ -236,7 +238,77 @@ export class RoomManager {
     room.players[playerId] = newPlayer;
     this.socketToPlayerMap.set(socketId, { roomId, playerId });
 
+    // If joining during an active match, initialize their playerStats
+    if (room.currentMatch && !room.currentMatch.playerStats[playerId]) {
+      room.currentMatch.playerStats[playerId] = {
+        score: 0,
+        correctClicks: 0,
+        wrongClicks: 0,
+        totalReactionTimeMs: 0,
+        avgReactionTimeMs: 0,
+        accuracy: 0,
+        claims: [],
+      };
+    }
+
     return { success: true, room, player: newPlayer };
+  }
+
+  /**
+   * Seamlessly re-authenticates and re-binds a reconnecting player
+   */
+  public reconnectPlayer(
+    socketId: string,
+    roomId: string,
+    playerId: string
+  ): { success: boolean; room?: RoomState; player?: Player; error?: string } {
+    const room = this.rooms.get(roomId);
+    if (!room) return { success: false, error: 'Room not found' };
+
+    let player = room.players[playerId];
+    if (!player) {
+      if (room.currentMatch && room.currentMatch.playerStats[playerId]) {
+        // Restore player previously in match
+        const playerIndex = Object.keys(room.players).length;
+        player = {
+          id: playerId,
+          socketId,
+          displayName: 'Player',
+          color: GameRules.getPlayerColor(playerIndex),
+          isHost: room.hostId === playerId,
+          isReady: true,
+          isConnected: true,
+          score: room.currentMatch.playerStats[playerId].score || 0,
+          correctClicks: room.currentMatch.playerStats[playerId].correctClicks || 0,
+          wrongClicks: room.currentMatch.playerStats[playerId].wrongClicks || 0,
+          joinedAt: Date.now(),
+          lastActiveAt: Date.now(),
+        };
+        room.players[playerId] = player;
+      } else {
+        return { success: false, error: 'Player not found in room' };
+      }
+    }
+
+    player.socketId = socketId;
+    player.isConnected = true;
+    player.disconnectedAt = undefined;
+    player.lastActiveAt = Date.now();
+
+    if (room.currentMatch && !room.currentMatch.playerStats[playerId]) {
+      room.currentMatch.playerStats[playerId] = {
+        score: player.score || 0,
+        correctClicks: player.correctClicks || 0,
+        wrongClicks: player.wrongClicks || 0,
+        totalReactionTimeMs: 0,
+        avgReactionTimeMs: 0,
+        accuracy: 0,
+        claims: [],
+      };
+    }
+
+    this.socketToPlayerMap.set(socketId, { roomId, playerId });
+    return { success: true, room, player };
   }
 
   /**
@@ -357,6 +429,16 @@ export class RoomManager {
       durationSeconds: room.settings.durationSeconds,
     });
 
+    // Clear any existing timers for this room
+    if (this.countdownTimers.has(roomId)) {
+      clearInterval(this.countdownTimers.get(roomId)!);
+      this.countdownTimers.delete(roomId);
+    }
+    if (this.matchTimers.has(roomId)) {
+      clearInterval(this.matchTimers.get(roomId)!);
+      this.matchTimers.delete(roomId);
+    }
+
     // Start countdown timer
     let remaining = countdownSeconds;
     const timerInterval = setInterval(() => {
@@ -365,9 +447,11 @@ export class RoomManager {
         this.broadcastToRoom(roomId, 'game:countdownTick', { remaining });
       } else {
         clearInterval(timerInterval);
+        this.countdownTimers.delete(roomId);
         this.launchMatch(roomId);
       }
     }, 1000);
+    this.countdownTimers.set(roomId, timerInterval);
 
     return { success: true };
   }
@@ -378,6 +462,11 @@ export class RoomManager {
   private launchMatch(roomId: string) {
     const room = this.rooms.get(roomId);
     if (!room || !room.currentMatch) return;
+
+    if (this.countdownTimers.has(roomId)) {
+      clearInterval(this.countdownTimers.get(roomId)!);
+      this.countdownTimers.delete(roomId);
+    }
 
     room.status = 'PLAYING';
     room.currentMatch.status = 'RUNNING';
@@ -403,10 +492,16 @@ export class RoomManager {
    * Server-authoritative timer updater
    */
   private startAuthoritativeTimer(roomId: string, matchId: string) {
+    if (this.matchTimers.has(roomId)) {
+      clearInterval(this.matchTimers.get(roomId)!);
+      this.matchTimers.delete(roomId);
+    }
+
     const timerInterval = setInterval(() => {
       const room = this.rooms.get(roomId);
       if (!room || !room.currentMatch || room.currentMatch.id !== matchId || room.currentMatch.status !== 'RUNNING') {
         clearInterval(timerInterval);
+        this.matchTimers.delete(roomId);
         return;
       }
 
@@ -421,9 +516,12 @@ export class RoomManager {
 
       if (now >= room.currentMatch.endsAt) {
         clearInterval(timerInterval);
+        this.matchTimers.delete(roomId);
         this.finishMatch(roomId, 'Time expired');
       }
     }, 1000);
+
+    this.matchTimers.set(roomId, timerInterval);
   }
 
   /**
@@ -465,11 +563,12 @@ export class RoomManager {
       const result = GameRules.processClick(match, player, number, actionId, match.settings.wrongClickPenalty, now);
 
       if (!result.isCorrect) {
-        // Emit personal error feedback to the clicker
+        // Emit personal error feedback to the clicker with latest target & claimedMap
         this.sendToSocket(socketId, 'game:claimRejected', {
           number,
           reason: result.reason,
           currentTarget: match.currentTarget,
+          claimedMap: match.claimedMap,
         });
 
         // Broadcast stats update so leaderboard accuracy updates
@@ -518,6 +617,15 @@ export class RoomManager {
     const room = this.rooms.get(roomId);
     if (!room || !room.currentMatch) return null;
 
+    if (this.matchTimers.has(roomId)) {
+      clearInterval(this.matchTimers.get(roomId)!);
+      this.matchTimers.delete(roomId);
+    }
+    if (this.countdownTimers.has(roomId)) {
+      clearInterval(this.countdownTimers.get(roomId)!);
+      this.countdownTimers.delete(roomId);
+    }
+
     room.currentMatch.status = 'ENDED';
     room.status = 'FINISHED';
 
@@ -548,6 +656,15 @@ export class RoomManager {
     const room = this.rooms.get(roomId);
     if (!room) return { success: false, error: 'Room not found' };
     if (room.hostId !== hostPlayerId) return { success: false, error: 'Only the host can initiate Play Again' };
+
+    if (this.matchTimers.has(roomId)) {
+      clearInterval(this.matchTimers.get(roomId)!);
+      this.matchTimers.delete(roomId);
+    }
+    if (this.countdownTimers.has(roomId)) {
+      clearInterval(this.countdownTimers.get(roomId)!);
+      this.countdownTimers.delete(roomId);
+    }
 
     room.status = 'WAITING';
     room.currentMatch = null;
@@ -623,7 +740,23 @@ export class RoomManager {
     const room = this.rooms.get(roomId);
     if (!room) return false;
 
-    delete room.players[playerId];
+    const player = room.players[playerId];
+    if (player) {
+      this.socketToPlayerMap.delete(player.socketId);
+    }
+
+    const isMatchActive = room.status === 'PLAYING' || room.status === 'COUNTDOWN';
+
+    if (isMatchActive) {
+      // During an active match, mark player disconnected rather than deleting them,
+      // so they can rejoin and their score/stats are preserved
+      if (player) {
+        player.isConnected = false;
+        player.disconnectedAt = Date.now();
+      }
+    } else {
+      delete room.players[playerId];
+    }
 
     // If host left, migrate
     if (room.hostId === playerId) {
@@ -641,7 +774,7 @@ export class RoomManager {
 
     this.broadcastToRoom(roomId, 'room:playerLeft', {
       playerId,
-      remainingCount: Object.keys(room.players).length,
+      remainingCount: Object.values(room.players).filter((p) => p.isConnected).length,
     });
 
     return true;

@@ -139,4 +139,43 @@ describe('Multiplayer & Concurrency Race Condition Integration Tests', () => {
     expect(room.hostId).toBe(bob.id);
     expect(bob.isHost).toBe(true);
   });
+
+  it('should preserve player and allow reconnection during active match', async () => {
+    const { room, player: host } = roomManager.createRoom('socket-host', {
+      displayName: 'HostAlice',
+      userId: 'user-alice',
+      settings: { numberRange: { min: 1, max: 20 }, gameMode: 'COMPLETE_GRID' },
+    });
+
+    const joinRes = roomManager.joinRoom('socket-bob', {
+      roomCode: room.roomCode,
+      displayName: 'BobGuest',
+      userId: 'user-bob',
+    });
+    const bob = joinRes.player!;
+    roomManager.setPlayerReady(room.id, bob.id, true);
+
+    // Start game
+    roomManager.startGame(room.id, host.id);
+    room.status = 'PLAYING';
+    room.currentMatch!.status = 'RUNNING';
+
+    // Bob disconnects/leaves mid-match
+    roomManager.leaveRoom(room.id, bob.id);
+
+    // Bob should still be in room.players as disconnected (not deleted)
+    expect(room.players[bob.id]).toBeDefined();
+    expect(room.players[bob.id].isConnected).toBe(false);
+
+    // Bob reconnects with new socket ID
+    const reconnRes = roomManager.reconnectPlayer('socket-bob-new', room.id, bob.id);
+    expect(reconnRes.success).toBe(true);
+    expect(reconnRes.player!.isConnected).toBe(true);
+    expect(reconnRes.player!.socketId).toBe('socket-bob-new');
+
+    // Bob claims current target 1
+    const claimRes = await roomManager.submitClaim('socket-bob-new', room.id, room.currentMatch!.id, 1, 'act-bob-1');
+    expect(claimRes.success).toBe(true);
+    expect(room.currentMatch!.currentTarget).toBe(2);
+  });
 });

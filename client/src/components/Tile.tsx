@@ -95,7 +95,8 @@ export const Tile: React.FC<TileProps> = React.memo(
       prev.number === next.number &&
       prev.disabled === next.disabled &&
       prev.isMasked === next.isMasked &&
-      prev.claim?.playerId === next.claim?.playerId
+      prev.claim?.playerId === next.claim?.playerId &&
+      prev.onClaim === next.onClaim
     );
   }
 );

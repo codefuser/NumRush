@@ -189,15 +189,17 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     if (isDraggingRef.current && activePointersRef.current.size === 1) {
       const dx = e.clientX - dragStartRef.current.x;
       const dy = e.clientY - dragStartRef.current.y;
+      const distance = Math.hypot(dx, dy);
 
-      if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
+      // Deadzone threshold for mobile touch taps (15px):
+      // Ignore tiny finger jitter so taps are never blocked or swallowed!
+      if (distance > 15) {
         hasMovedRef.current = true;
+        setPan({
+          x: panStartRef.current.x + dx,
+          y: panStartRef.current.y + dy,
+        });
       }
-
-      setPan({
-        x: panStartRef.current.x + dx,
-        y: panStartRef.current.y + dy,
-      });
     }
   };
 
@@ -207,10 +209,14 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     if (activePointersRef.current.size === 0) {
       isDraggingRef.current = false;
       initialPinchDistRef.current = null;
+      // Reset moved flag after synthetic click fires
+      setTimeout(() => {
+        hasMovedRef.current = false;
+      }, 80);
     }
   };
 
-  // Claim click handler: only trigger if user wasn't dragging/panning
+  // Claim click handler: only trigger if user genuinely panned/dragged
   const handleTileClaim = (num: number) => {
     if (hasMovedRef.current) return;
     onClaimNumber(num);
@@ -263,7 +269,11 @@ export const GameScreen: React.FC<GameScreenProps> = ({
         <div className="flex items-center gap-2">
           {onLeaveRoom && (
             <button
-              onClick={onLeaveRoom}
+              onClick={() => {
+                if (window.confirm('Are you sure you want to leave the active match?')) {
+                  onLeaveRoom();
+                }
+              }}
               title="Exit Game"
               className="p-1.5 rounded-lg bg-gray-800/60 hover:bg-gray-700 text-gray-400 hover:text-white"
             >

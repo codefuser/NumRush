@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Header } from './components/Header.js';
 import { HomeScreen } from './components/HomeScreen.js';
 import { LobbyScreen } from './components/LobbyScreen.js';
@@ -56,6 +56,12 @@ export const App: React.FC = () => {
   const [match, setMatch] = useState<MatchState | null>(null);
   const [results, setResults] = useState<MatchResults | null>(null);
 
+  // Sync refs to avoid stale closures in stable callbacks
+  const roomRef = useRef<RoomState | null>(room);
+  roomRef.current = room;
+  const matchRef = useRef<MatchState | null>(match);
+  matchRef.current = match;
+
   // Timers & Countdown
   const [countdownRemaining, setCountdownRemaining] = useState<number | null>(null);
   const [serverRemainingSeconds, setServerRemainingSeconds] = useState<number>(180);
@@ -105,6 +111,16 @@ export const App: React.FC = () => {
   useEffect(() => {
     const socket = socketService.init();
 
+    // Auto-reconnect active session on socket connect
+    const handleConnect = () => {
+      const activeSession = socketService.getActiveSession();
+      const currentRoomId = roomRef.current?.id || activeSession?.roomId;
+      if (currentRoomId) {
+        socket.emit('game:requestSnapshot', { roomId: currentRoomId, userId });
+      }
+    };
+    socket.on('connect', handleConnect);
+
     // A. Room Created
     socket.on('room:created', (data: { room: RoomState }) => {
       setIsLoading(false);
@@ -121,7 +137,7 @@ export const App: React.FC = () => {
     });
 
     // B. Room Joined
-    socket.on('room:joined', (data: { room: RoomState }) => {
+    socket.on('room:joined', (data: { room: RoomState; remainingSeconds?: number; countdownRemaining?: number | null }) => {
       setIsLoading(false);
       setIsJoinOpen(false);
       setRoom(data.room);
@@ -134,8 +150,21 @@ export const App: React.FC = () => {
         timestamp: Date.now(),
       });
 
-      if (data.room.status === 'PLAYING' && data.room.currentMatch) {
+      if ((data.room.status === 'PLAYING' || data.room.status === 'COUNTDOWN') && data.room.currentMatch) {
         setMatch(data.room.currentMatch);
+        if (data.remainingSeconds !== undefined) {
+          setServerRemainingSeconds(data.remainingSeconds);
+        } else if (data.room.currentMatch.endsAt) {
+          const remaining = Math.max(0, Math.ceil((data.room.currentMatch.endsAt - Date.now()) / 1000));
+          setServerRemainingSeconds(remaining);
+        }
+
+        if (data.room.status === 'COUNTDOWN') {
+          const cd = data.countdownRemaining ?? Math.max(0, Math.ceil((data.room.currentMatch.countdownEndsAt - Date.now()) / 1000));
+          setCountdownRemaining(cd);
+        } else {
+          setCountdownRemaining(null);
+        }
         setScreen('GAME');
       } else {
         setScreen('LOBBY');
@@ -151,6 +180,23 @@ export const App: React.FC = () => {
           players: {
             ...prev.players,
             [data.player.id]: data.player,
+          },
+        };
+      });
+    });
+
+    // C2. Player Reconnected
+    socket.on('room:playerReconnected', (data: { playerId: string; displayName?: string }) => {
+      setRoom((prev) => {
+        if (!prev || !prev.players[data.playerId]) return prev;
+        return {
+          ...prev,
+          players: {
+            ...prev.players,
+            [data.playerId]: {
+              ...prev.players[data.playerId],
+              isConnected: true,
+            },
           },
         };
       });
@@ -209,9 +255,9 @@ export const App: React.FC = () => {
       if (data.shuffledGrid && data.matchId) {
         setMatch({
           id: data.matchId,
-          roomId: room?.id || '',
+          roomId: roomRef.current?.id || '',
           status: 'COUNTDOWN',
-          settings: room?.settings || ({} as any),
+          settings: roomRef.current?.settings || ({} as any),
           shuffledGrid: data.shuffledGrid,
           currentTarget: data.currentTarget,
           maxTarget: data.maxTarget,
@@ -242,9 +288,9 @@ export const App: React.FC = () => {
 
       setMatch((prev) => ({
         id: data.matchId,
-        roomId: room?.id || '',
+        roomId: roomRef.current?.id || prev?.roomId || '',
         status: 'RUNNING',
-        settings: room?.settings || ({} as any),
+        settings: roomRef.current?.settings || prev?.settings || ({} as any),
         shuffledGrid: data.shuffledGrid || prev?.shuffledGrid || [],
         currentTarget: data.currentTarget,
         maxTarget: data.maxTarget,
@@ -280,7 +326,7 @@ export const App: React.FC = () => {
 
         return {
           ...prev,
-          currentTarget: data.nextTarget,
+          currentTarget: Math.max(prev.currentTarget, data.nextTarget),
           claimedMap: updatedClaimedMap,
         };
       });
@@ -298,9 +344,19 @@ export const App: React.FC = () => {
       });
     });
 
-    // J. Wrong Claim rejection
-    socket.on('game:claimRejected', () => {
+    // J. Wrong Claim rejection - auto-syncs target and claimedMap if desynchronized
+    socket.on('game:claimRejected', (data: any) => {
       soundManager.playWrong();
+      if (data?.currentTarget) {
+        setMatch((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            currentTarget: Math.max(prev.currentTarget, data.currentTarget),
+            claimedMap: data.claimedMap ? { ...prev.claimedMap, ...data.claimedMap } : prev.claimedMap,
+          };
+        });
+      }
     });
 
     // K. Timer Updates from authoritative server
@@ -326,12 +382,23 @@ export const App: React.FC = () => {
 
     // N. Reconnection Snapshot
     socket.on('game:stateSnapshot', (data: any) => {
+      setIsLoading(false);
       if (data.success && data.room) {
         setRoom(data.room);
-        if (data.currentMatch && data.currentMatch.status === 'RUNNING') {
+        if (data.currentMatch && (data.currentMatch.status === 'RUNNING' || data.room.status === 'PLAYING')) {
           setMatch(data.currentMatch);
-          const remaining = Math.max(0, Math.ceil((data.currentMatch.endsAt - Date.now()) / 1000));
+          const remaining = data.remainingSeconds !== undefined
+            ? data.remainingSeconds
+            : Math.max(0, Math.ceil((data.currentMatch.endsAt - Date.now()) / 1000));
           setServerRemainingSeconds(remaining);
+          setCountdownRemaining(null);
+          setScreen('GAME');
+        } else if (data.currentMatch && data.room.status === 'COUNTDOWN') {
+          setMatch(data.currentMatch);
+          const cd = data.countdownRemaining !== undefined
+            ? data.countdownRemaining
+            : Math.max(0, Math.ceil((data.currentMatch.countdownEndsAt - Date.now()) / 1000));
+          setCountdownRemaining(cd);
           setScreen('GAME');
         } else if (data.room.status === 'FINISHED' && data.room.lastResults) {
           setResults(data.room.lastResults);
@@ -350,9 +417,11 @@ export const App: React.FC = () => {
     });
 
     return () => {
+      socket.off('connect', handleConnect);
       socket.off('room:created');
       socket.off('room:joined');
       socket.off('room:playerJoined');
+      socket.off('room:playerReconnected');
       socket.off('room:playerLeft');
       socket.off('room:kicked');
       socket.off('room:playerReadyUpdated');
@@ -368,7 +437,7 @@ export const App: React.FC = () => {
       socket.off('game:stateSnapshot');
       socket.off('room:error');
     };
-  }, [userId, displayName, room?.id]);
+  }, [userId, displayName]);
 
   // Actions
   const handleCreateRoom = (settings: RoomSettings) => {
@@ -422,21 +491,32 @@ export const App: React.FC = () => {
     socket.emit('room:kick', { roomId: room.id, targetPlayerId });
   };
 
+  // Smooth local timer countdown while match is RUNNING
+  useEffect(() => {
+    if (screen !== 'GAME' || match?.status !== 'RUNNING' || countdownRemaining !== null) return;
+    const timer = setInterval(() => {
+      setServerRemainingSeconds((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [screen, match?.status, countdownRemaining]);
+
   const handleClaimNumber = useCallback(
     (number: number) => {
-      if (!room || !match || match.status !== 'RUNNING') return;
+      const curRoom = roomRef.current;
+      const curMatch = matchRef.current;
+      if (!curRoom || !curMatch || curMatch.status !== 'RUNNING') return;
       const socket = socketService.getSocket();
       const actionId = `act_${userId}_${number}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
       socket.emit('game:claimNumber', {
-        roomId: room.id,
-        matchId: match.id,
+        roomId: curRoom.id,
+        matchId: curMatch.id,
         number,
         actionId,
         clientTimestamp: Date.now(),
       });
     },
-    [room, match, userId]
+    [userId]
   );
 
   const handlePlayAgain = () => {

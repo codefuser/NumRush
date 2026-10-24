@@ -63,16 +63,28 @@ export function setupSocketHandlers(io: Server, roomManager: RoomManager) {
 
         socket.join(result.room.id);
 
+        const now = Date.now();
+        const remainingSeconds = result.room.currentMatch && result.room.currentMatch.status === 'RUNNING'
+          ? Math.max(0, Math.ceil((result.room.currentMatch.endsAt - now) / 1000))
+          : (result.room.currentMatch?.settings.durationSeconds ?? result.room.settings.durationSeconds);
+
+        const countdownRemaining = result.room.currentMatch && result.room.currentMatch.status === 'COUNTDOWN'
+          ? Math.max(0, Math.ceil((result.room.currentMatch.countdownEndsAt - now) / 1000))
+          : null;
+
         const response = {
           success: true,
           room: result.room,
           player: result.player,
+          serverTime: now,
+          remainingSeconds,
+          countdownRemaining,
         };
 
         socket.emit('room:joined', response);
         socket.to(result.room.id).emit('room:playerJoined', {
           player: result.player,
-          playerCount: Object.keys(result.room.players).length,
+          playerCount: Object.values(result.room.players).filter((p) => p.isConnected).length,
         });
 
         if (callback) callback(response);
@@ -196,16 +208,77 @@ export function setupSocketHandlers(io: Server, roomManager: RoomManager) {
         return;
       }
 
+      // Reconnect player socket and update room mapping
+      if (data.userId) {
+        roomManager.reconnectPlayer(socket.id, room.id, data.userId);
+      }
+      socket.join(room.id);
+
       const player = data.userId ? room.players[data.userId] : undefined;
+      const now = Date.now();
+      const remainingSeconds = room.currentMatch && room.currentMatch.status === 'RUNNING'
+        ? Math.max(0, Math.ceil((room.currentMatch.endsAt - now) / 1000))
+        : (room.currentMatch?.settings.durationSeconds ?? room.settings.durationSeconds);
+
+      const countdownRemaining = room.currentMatch && room.currentMatch.status === 'COUNTDOWN'
+        ? Math.max(0, Math.ceil((room.currentMatch.countdownEndsAt - now) / 1000))
+        : null;
+
       const snapshot = {
         success: true,
         room,
         currentMatch: room.currentMatch,
         yourPlayer: player,
-        serverTime: Date.now(),
+        serverTime: now,
+        remainingSeconds,
+        countdownRemaining,
       };
 
       socket.emit('game:stateSnapshot', snapshot);
+      if (data.userId && player) {
+        socket.to(room.id).emit('room:playerReconnected', {
+          playerId: player.id,
+          displayName: player.displayName,
+        });
+      }
+      if (callback) callback(snapshot);
+    });
+
+    // 8b. Dedicated Reconnect Handler
+    socket.on('room:reconnect', (data: { roomId: string; userId: string }, callback?: (res: unknown) => void) => {
+      const result = roomManager.reconnectPlayer(socket.id, data.roomId, data.userId);
+      if (!result.success || !result.room) {
+        if (callback) callback({ success: false, error: result.error || 'Failed to reconnect' });
+        return;
+      }
+
+      socket.join(result.room.id);
+
+      const now = Date.now();
+      const remainingSeconds = result.room.currentMatch && result.room.currentMatch.status === 'RUNNING'
+        ? Math.max(0, Math.ceil((result.room.currentMatch.endsAt - now) / 1000))
+        : (result.room.currentMatch?.settings.durationSeconds ?? result.room.settings.durationSeconds);
+
+      const countdownRemaining = result.room.currentMatch && result.room.currentMatch.status === 'COUNTDOWN'
+        ? Math.max(0, Math.ceil((result.room.currentMatch.countdownEndsAt - now) / 1000))
+        : null;
+
+      const snapshot = {
+        success: true,
+        room: result.room,
+        currentMatch: result.room.currentMatch,
+        yourPlayer: result.player,
+        serverTime: now,
+        remainingSeconds,
+        countdownRemaining,
+      };
+
+      socket.emit('game:stateSnapshot', snapshot);
+      socket.to(result.room.id).emit('room:playerReconnected', {
+        playerId: data.userId,
+        displayName: result.player?.displayName,
+      });
+
       if (callback) callback(snapshot);
     });
 
