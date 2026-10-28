@@ -174,6 +174,11 @@ export function setupSocketHandlers(io: Server, roomManager: RoomManager) {
     // 6. Claim Number (Server-authoritative, atomic concurrency queue)
     socket.on('game:claimNumber', async (payload: ClaimNumberPayload, callback?: (res: unknown) => void) => {
       try {
+        // Ensure reconnected socket is joined to room channel
+        if (payload.roomId) {
+          socket.join(payload.roomId);
+        }
+
         const result = await roomManager.submitClaim(
           socket.id,
           payload.roomId,

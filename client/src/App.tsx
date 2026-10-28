@@ -113,15 +113,28 @@ export const App: React.FC = () => {
   useEffect(() => {
     const socket = socketService.init();
 
-    // Auto-reconnect active session on socket connect
+    // Auto-reconnect active session on socket connect or reconnection
     const handleConnect = () => {
       const activeSession = socketService.getActiveSession();
       const currentRoomId = roomRef.current?.id || activeSession?.roomId;
       if (currentRoomId) {
+        socket.emit('room:reconnect', { roomId: currentRoomId, userId });
         socket.emit('game:requestSnapshot', { roomId: currentRoomId, userId });
       }
     };
+
     socket.on('connect', handleConnect);
+    socket.io.on('reconnect', handleConnect);
+
+    const unsubStatus = socketService.onStatusChange((status) => {
+      if (status === 'connected') {
+        handleConnect();
+      }
+    });
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', handleConnect);
+    }
 
     // A. Room Created
     socket.on('room:created', (data: { room: RoomState }) => {
@@ -154,14 +167,16 @@ export const App: React.FC = () => {
 
       if ((data.room.status === 'PLAYING' || data.room.status === 'COUNTDOWN') && data.room.currentMatch) {
         setMatch(data.room.currentMatch);
-        if (data.elapsedSeconds !== undefined) {
+        if (data.room.currentMatch.startedAt) {
+          setServerElapsedSeconds(Math.max(0, Math.floor((Date.now() - data.room.currentMatch.startedAt) / 1000)));
+        } else if (data.elapsedSeconds !== undefined) {
           setServerElapsedSeconds(data.elapsedSeconds);
         }
-        if (data.remainingSeconds !== undefined) {
-          setServerRemainingSeconds(data.remainingSeconds);
-        } else if (data.room.currentMatch.endsAt) {
+        if (data.room.currentMatch.endsAt) {
           const isUnlimited = (data.room.currentMatch.settings?.durationSeconds ?? 0) <= 0;
           setServerRemainingSeconds(isUnlimited ? 0 : Math.max(0, Math.ceil((data.room.currentMatch.endsAt - Date.now()) / 1000)));
+        } else if (data.remainingSeconds !== undefined) {
+          setServerRemainingSeconds(data.remainingSeconds);
         }
 
         if (data.room.status === 'COUNTDOWN') {
@@ -290,6 +305,7 @@ export const App: React.FC = () => {
       }, 700);
 
       setServerRemainingSeconds(data.durationSeconds);
+      setServerElapsedSeconds(0);
 
       setMatch((prev) => ({
         id: data.matchId,
@@ -429,13 +445,15 @@ export const App: React.FC = () => {
         setRoom(data.room);
         if (data.currentMatch && (data.currentMatch.status === 'RUNNING' || data.room.status === 'PLAYING')) {
           setMatch(data.currentMatch);
-          if (data.elapsedSeconds !== undefined) {
+          if (data.currentMatch.startedAt) {
+            setServerElapsedSeconds(Math.max(0, Math.floor((Date.now() - data.currentMatch.startedAt) / 1000)));
+          } else if (data.elapsedSeconds !== undefined) {
             setServerElapsedSeconds(data.elapsedSeconds);
           }
           const isUnlimited = (data.currentMatch.settings?.durationSeconds ?? data.room.settings?.durationSeconds ?? 0) <= 0;
-          const remaining = data.remainingSeconds !== undefined
-            ? data.remainingSeconds
-            : (isUnlimited ? 0 : Math.max(0, Math.ceil((data.currentMatch.endsAt - Date.now()) / 1000)));
+          const remaining = data.currentMatch.endsAt
+            ? (isUnlimited ? 0 : Math.max(0, Math.ceil((data.currentMatch.endsAt - Date.now()) / 1000)))
+            : (data.remainingSeconds !== undefined ? data.remainingSeconds : 0);
           setServerRemainingSeconds(remaining);
           setCountdownRemaining(null);
           setScreen('GAME');
@@ -464,6 +482,11 @@ export const App: React.FC = () => {
 
     return () => {
       socket.off('connect', handleConnect);
+      socket.io.off('reconnect', handleConnect);
+      unsubStatus();
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('online', handleConnect);
+      }
       socket.off('room:created');
       socket.off('room:joined');
       socket.off('room:playerJoined');
@@ -543,13 +566,21 @@ export const App: React.FC = () => {
     const isUnlimited = !match.settings.durationSeconds || match.settings.durationSeconds <= 0;
     const timer = setInterval(() => {
       if (isUnlimited) {
-        setServerElapsedSeconds((prev) => prev + 1);
+        if (match.startedAt) {
+          setServerElapsedSeconds(Math.max(0, Math.floor((Date.now() - match.startedAt) / 1000)));
+        } else {
+          setServerElapsedSeconds((prev) => prev + 1);
+        }
       } else {
-        setServerRemainingSeconds((prev) => Math.max(0, prev - 1));
+        if (match.endsAt) {
+          setServerRemainingSeconds(Math.max(0, Math.ceil((match.endsAt - Date.now()) / 1000)));
+        } else {
+          setServerRemainingSeconds((prev) => Math.max(0, prev - 1));
+        }
       }
     }, 1000);
     return () => clearInterval(timer);
-  }, [screen, match?.status, match?.settings.durationSeconds, countdownRemaining]);
+  }, [screen, match?.status, match?.settings.durationSeconds, match?.startedAt, match?.endsAt, countdownRemaining]);
 
   const handleClaimNumber = useCallback(
     (number: number) => {
@@ -572,6 +603,11 @@ export const App: React.FC = () => {
         (res: any) => {
           if (res && !res.success) {
             console.warn('[Claim] Server rejected claim:', res.reason);
+            // Auto resync if out of sync with other players
+            const room = roomRef.current;
+            if (room) {
+              socket.emit('game:requestSnapshot', { roomId: room.id, userId });
+            }
           }
         }
       );

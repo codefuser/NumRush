@@ -119,6 +119,10 @@ export const Tile: React.FC<TileProps> = React.memo(
         onPointerDown={handlePointerDown}
         onPointerUp={handlePointerUp}
         onClick={handleClick}
+        onDoubleClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }}
         disabled={disabled}
         className={`flex items-center justify-center aspect-square rounded-xl font-display font-black text-xs sm:text-base border transition-all duration-75 select-none focus:outline-none touch-manipulation active:scale-95 active:brightness-125 ${
           model.tileDefault

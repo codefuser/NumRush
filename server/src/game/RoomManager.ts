@@ -553,6 +553,14 @@ export class RoomManager {
     return this.enqueueRoomOperation(roomId, async () => {
       const room = this.rooms.get(roomId);
       if (!room || !room.currentMatch || room.currentMatch.id !== matchId) {
+        if (room?.currentMatch) {
+          this.sendToSocket(socketId, 'game:claimRejected', {
+            number,
+            reason: 'Match is not active',
+            currentTarget: room.currentMatch.currentTarget,
+            claimedMap: room.currentMatch.claimedMap,
+          });
+        }
         return { success: false, reason: 'Match is not active' };
       }
 
@@ -569,6 +577,14 @@ export class RoomManager {
       }
 
       if (!socketInfo || socketInfo.roomId !== roomId) {
+        if (room.currentMatch) {
+          this.sendToSocket(socketId, 'game:claimRejected', {
+            number,
+            reason: 'Unauthorized player claim',
+            currentTarget: room.currentMatch.currentTarget,
+            claimedMap: room.currentMatch.claimedMap,
+          });
+        }
         return { success: false, reason: 'Unauthorized player claim' };
       }
 

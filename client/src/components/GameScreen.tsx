@@ -157,22 +157,70 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     match.settings.durationSeconds <= 0 ||
     match.settings.durationSeconds >= 86400;
 
-  // Local ticker for smooth count-up timer in Complete Grid / Unlimited matches
-  const [localElapsed, setLocalElapsed] = useState<number>(serverElapsedSeconds);
+  // Local ticker for smooth count-up timer anchored to match.startedAt
+  const [localElapsed, setLocalElapsed] = useState<number>(() => {
+    if (match.startedAt) {
+      return Math.max(0, Math.floor((Date.now() - match.startedAt) / 1000));
+    }
+    return serverElapsedSeconds;
+  });
+
+  const [localRemaining, setLocalRemaining] = useState<number>(() => {
+    if (!isUnlimitedMode && match.endsAt) {
+      return Math.max(0, Math.ceil((match.endsAt - Date.now()) / 1000));
+    }
+    return serverRemainingSeconds;
+  });
 
   useEffect(() => {
-    setLocalElapsed(serverElapsedSeconds);
-  }, [serverElapsedSeconds]);
+    if (match.startedAt) {
+      setLocalElapsed(Math.max(0, Math.floor((Date.now() - match.startedAt) / 1000)));
+    } else {
+      setLocalElapsed(serverElapsedSeconds);
+    }
+  }, [serverElapsedSeconds, match.startedAt]);
 
   useEffect(() => {
-    if (!isUnlimitedMode || match.status !== 'RUNNING') return;
+    if (!isUnlimitedMode && match.endsAt) {
+      setLocalRemaining(Math.max(0, Math.ceil((match.endsAt - Date.now()) / 1000)));
+    } else {
+      setLocalRemaining(serverRemainingSeconds);
+    }
+  }, [serverRemainingSeconds, match.endsAt, isUnlimitedMode]);
+
+  useEffect(() => {
+    if (match.status !== 'RUNNING') return;
     const interval = setInterval(() => {
-      setLocalElapsed((prev) => prev + 1);
+      if (isUnlimitedMode) {
+        if (match.startedAt) {
+          setLocalElapsed(Math.max(0, Math.floor((Date.now() - match.startedAt) / 1000)));
+        } else {
+          setLocalElapsed((prev) => prev + 1);
+        }
+      } else {
+        if (match.endsAt) {
+          setLocalRemaining(Math.max(0, Math.ceil((match.endsAt - Date.now()) / 1000)));
+        } else {
+          setLocalRemaining((prev) => Math.max(0, prev - 1));
+        }
+      }
     }, 1000);
     return () => clearInterval(interval);
-  }, [isUnlimitedMode, match.status]);
+  }, [isUnlimitedMode, match.status, match.startedAt, match.endsAt]);
 
-  const isLowTime = !isUnlimitedMode && serverRemainingSeconds <= 30 && match.status === 'RUNNING';
+  // Periodic background resync: ensures client never stays stuck if mobile tower / packets drop
+  useEffect(() => {
+    if (match.status !== 'RUNNING') return;
+    const interval = setInterval(() => {
+      const socket = socketService.getSocket();
+      if (socket && socket.connected) {
+        socket.emit('game:requestSnapshot', { roomId: room.id, userId: currentPlayerId });
+      }
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [match.status, room.id, currentPlayerId]);
+
+  const isLowTime = !isUnlimitedMode && localRemaining <= 30 && match.status === 'RUNNING';
   const totalNumbers = match.maxTarget - match.settings.numberRange.min + 1;
   const claimedCount = Object.keys(match.claimedMap).length;
 
@@ -274,14 +322,11 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     setZoom((z) => Math.min(2.5, Math.max(0.4, Math.round((z + delta) * 100) / 100)));
   };
 
-  // Double-tap or double-click to toggle between Fit and 1.4x zoom
-  const handleCanvasDoubleClick = () => {
-    const fitZoom = calculateFitZoom();
-    if (Math.abs(zoom - fitZoom) < 0.15) {
-      setZoom(Math.min(2.2, fitZoom * 1.45));
-    } else {
-      handleFitScreen();
-    }
+  const handleManualReconnect = () => {
+    socketService.reconnect();
+    const socket = socketService.getSocket();
+    socket.emit('room:reconnect', { roomId: room.id, userId: currentPlayerId });
+    socket.emit('game:requestSnapshot', { roomId: room.id, userId: currentPlayerId });
   };
 
   // Pointer Down (Mouse or Touch)
@@ -444,7 +489,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
               <span>
                 {isUnlimitedMode
                   ? `Elapsed: ${formatTime(localElapsed)}`
-                  : formatTime(serverRemainingSeconds)}
+                  : formatTime(localRemaining)}
               </span>
             </div>
           </div>
@@ -453,12 +498,12 @@ export const GameScreen: React.FC<GameScreenProps> = ({
         {/* Offline / Reconnecting Warning with manual retry */}
         {socketStatus !== 'connected' && (
           <button
-            onClick={() => socketService.reconnect()}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-rose-950/90 border border-rose-500/70 text-rose-300 text-[11px] font-mono font-bold animate-pulse hover:bg-rose-900 cursor-pointer"
-            title="Click to reconnect immediately"
+            onClick={handleManualReconnect}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-950/95 border-2 border-rose-500 text-rose-200 text-xs font-mono font-bold animate-pulse hover:bg-rose-900 shadow-[0_0_20px_rgba(244,63,94,0.4)] cursor-pointer"
+            title="Connection dropped. Click to reconnect and sync numbers immediately!"
           >
             <WifiOff className="w-3.5 h-3.5 text-rose-400" />
-            <span>Reconnecting (Tap to Retry)</span>
+            <span>Reconnecting (Tap to Sync)</span>
           </button>
         )}
 
@@ -472,8 +517,19 @@ export const GameScreen: React.FC<GameScreenProps> = ({
           </span>
         </div>
 
-        {/* Right Actions: Scores, Fullscreen, Sound */}
+        {/* Right Actions: Center, Fullscreen, Sidebar, Sound */}
         <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* Quick Recenter Button in Header */}
+          <button
+            onClick={handleFitScreen}
+            title="Recenter & Fit Board to Screen"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/40 text-cyan-300 hover:text-cyan-100 text-xs font-mono font-bold transition-all tap-effect cursor-pointer"
+            aria-label="Recenter Board"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="hidden sm:inline">Center</span>
+          </button>
+
           {/* Mobile Scores Modal Button */}
           <button
             onClick={() => setIsScoresOpen(true)}
@@ -528,7 +584,6 @@ export const GameScreen: React.FC<GameScreenProps> = ({
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
-          onDoubleClick={handleCanvasDoubleClick}
           className={`flex-1 relative w-full h-full overflow-hidden flex items-center justify-center cursor-grab active:cursor-grabbing transition-colors duration-500 ${bgTheme.canvasBg}`}
           style={{ touchAction: 'none', ...bgTheme.canvasStyle }}
         >
