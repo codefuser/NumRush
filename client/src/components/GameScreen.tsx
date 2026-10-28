@@ -15,12 +15,13 @@ import {
   RotateCcw,
   Sparkles,
   Users,
+  PanelRightClose,
 } from 'lucide-react';
 import type { RoomState, MatchState } from '../types/index.js';
 import { Tile } from './Tile.js';
 import { soundManager } from '../services/audio.js';
 import { socketService } from '../services/socket.js';
-import { gridThemeService, GridModelId, GRID_MODELS } from '../services/gridTheme.js';
+import { gridThemeService, GridModelId, GRID_MODELS, getResponsiveGridCols } from '../services/gridTheme.js';
 import { backgroundThemeService, BackgroundThemeId, BACKGROUND_THEMES } from '../services/backgroundTheme.js';
 
 interface GameScreenProps {
@@ -76,6 +77,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   const [zoom, setZoom] = useState<number>(1);
   const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isScoresOpen, setIsScoresOpen] = useState<boolean>(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
   const [isMuted, setIsMuted] = useState<boolean>(soundManager.isMuted());
   const [socketStatus, setSocketStatus] = useState<'connected' | 'disconnected' | 'connecting'>('connected');
   const [isFullscreen, setIsFullscreen] = useState<boolean>(() => !!document.fullscreenElement);
@@ -174,55 +176,86 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   const totalNumbers = match.maxTarget - match.settings.numberRange.min + 1;
   const claimedCount = Object.keys(match.claimedMap).length;
 
-  // Grid columns adapted for responsive screens & number count
-  const getGridCols = () => {
-    if (totalNumbers <= 30) return 5;
-    if (totalNumbers <= 50) return 5;
-    if (totalNumbers <= 75) return 6;
-    if (totalNumbers <= 100) return 8;
-    if (totalNumbers <= 200) return 10;
-    return 12;
-  };
+  // Grid columns adapted dynamically for widescreen laptops vs portrait mobile
+  const [gridCols, setGridCols] = useState<number>(() => {
+    if (typeof window === 'undefined') return 10;
+    const isDesktop = window.innerWidth >= 1024;
+    const estW = isDesktop ? window.innerWidth - 320 : window.innerWidth;
+    const estH = window.innerHeight - 80;
+    return getResponsiveGridCols(totalNumbers, estW, estH);
+  });
 
-  const gridCols = getGridCols();
   const tileSize = totalNumbers <= 50 ? 54 : totalNumbers <= 100 ? 44 : 38;
 
   // Auto-fit calculations
-  const calculateFitZoom = useCallback(() => {
-    if (!viewportRef.current) return 1;
-    const vw = viewportRef.current.clientWidth;
-    const vh = viewportRef.current.clientHeight;
+  const calculateFitZoom = useCallback(
+    (colsOverride?: number) => {
+      if (!viewportRef.current) return 1;
+      const vw = viewportRef.current.clientWidth;
+      const vh = viewportRef.current.clientHeight;
 
-    const gap = 8;
-    const totalCols = gridCols;
-    const totalRows = Math.ceil(totalNumbers / totalCols);
+      const gap = 8;
+      const totalCols = colsOverride ?? gridCols;
+      const totalRows = Math.ceil(totalNumbers / totalCols);
 
-    const boardW = totalCols * tileSize + (totalCols - 1) * gap + 32;
-    const boardH = totalRows * tileSize + (totalRows - 1) * gap + 32;
+      const boardW = totalCols * tileSize + (totalCols - 1) * gap + 32;
+      const boardH = totalRows * tileSize + (totalRows - 1) * gap + 32;
 
-    const scaleX = (vw - 32) / boardW;
-    const scaleY = (vh - 32) / boardH;
-    const idealZoom = Math.min(scaleX, scaleY, 1.2);
-    return Math.max(0.35, Math.round(idealZoom * 100) / 100);
-  }, [totalNumbers, gridCols, tileSize]);
+      const scaleX = (vw - 32) / boardW;
+      const scaleY = (vh - 32) / boardH;
+      const idealZoom = Math.min(scaleX, scaleY, 2.2);
+      return Math.max(0.35, Math.round(idealZoom * 100) / 100);
+    },
+    [totalNumbers, gridCols, tileSize]
+  );
 
-  // Initial fit on match start
+  // Responsive layout sync on viewport resize, fullscreen, or sidebar toggle
   useEffect(() => {
-    const fitZoom = calculateFitZoom();
-    setZoom(fitZoom);
-    setPan({ x: 0, y: 0 });
-  }, [calculateFitZoom]);
+    const updateLayout = () => {
+      if (!viewportRef.current) return;
+      const vw = viewportRef.current.clientWidth;
+      const vh = viewportRef.current.clientHeight;
+      if (vw <= 0 || vh <= 0) return;
 
-  // Window resize handler
-  useEffect(() => {
-    const handleResize = () => {
+      const optimalCols = getResponsiveGridCols(totalNumbers, vw, vh);
+
+      setGridCols((prevCols) => {
+        if (prevCols !== optimalCols) {
+          if (!isDraggingRef.current) {
+            const fitZoom = calculateFitZoom(optimalCols);
+            setZoom(fitZoom);
+            setPan({ x: 0, y: 0 });
+          }
+          return optimalCols;
+        }
+        return prevCols;
+      });
+
       if (!isDraggingRef.current) {
-        setZoom(calculateFitZoom());
+        const fitZoom = calculateFitZoom(optimalCols);
+        setZoom((curr) => {
+          return Math.abs(curr - fitZoom) < 0.25 ? fitZoom : curr;
+        });
       }
     };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [calculateFitZoom]);
+
+    updateLayout();
+
+    const ro = new ResizeObserver(() => {
+      updateLayout();
+    });
+
+    if (viewportRef.current) {
+      ro.observe(viewportRef.current);
+    }
+
+    window.addEventListener('resize', updateLayout);
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', updateLayout);
+    };
+  }, [totalNumbers, tileSize, calculateFitZoom, isSidebarOpen]);
 
   // Reset / Fit to Screen
   const handleFitScreen = useCallback(() => {
@@ -296,8 +329,9 @@ export const GameScreen: React.FC<GameScreenProps> = ({
         // Dynamic panning bounds so players can easily reach outer edges at high zoom
         const vw = viewportRef.current?.clientWidth || 600;
         const vh = viewportRef.current?.clientHeight || 600;
+        const totalRows = Math.ceil(totalNumbers / gridCols);
         const boardW = gridCols * tileSize + (gridCols - 1) * 8 + 32;
-        const boardH = Math.ceil(totalNumbers / gridCols) * tileSize + 32;
+        const boardH = totalRows * tileSize + (totalRows - 1) * 8 + 32;
 
         const maxPanX = Math.max(120, Math.round((boardW * zoom - vw) / 2) + 120);
         const maxPanY = Math.max(120, Math.round((boardH * zoom - vh) / 2) + 120);
@@ -459,6 +493,20 @@ export const GameScreen: React.FC<GameScreenProps> = ({
             {isFullscreen ? <Minimize className="w-4 h-4 text-cyan-400" /> : <Maximize className="w-4 h-4 text-gray-300" />}
           </button>
 
+          {/* Desktop Leaderboard Toggle */}
+          <button
+            onClick={() => setIsSidebarOpen((prev) => !prev)}
+            title={isSidebarOpen ? 'Hide Leaderboard (Full Screen Grid)' : 'Show Leaderboard'}
+            className="hidden lg:flex items-center gap-1.5 p-2 rounded-xl bg-gray-900/90 hover:bg-gray-800 border border-gray-800 text-gray-300 hover:text-white transition-all tap-effect cursor-pointer"
+            aria-label="Toggle Leaderboard"
+          >
+            <PanelRightClose
+              className={`w-4 h-4 transition-transform duration-200 ${
+                isSidebarOpen ? '' : 'rotate-180 text-cyan-400'
+              }`}
+            />
+          </button>
+
           {/* Sound Toggle */}
           <button
             onClick={toggleSound}
@@ -570,19 +618,41 @@ export const GameScreen: React.FC<GameScreenProps> = ({
               <span>Center</span>
             </button>
           </div>
+          {/* Floating Expand Sidebar Button when collapsed on Desktop */}
+          {!isSidebarOpen && (
+            <button
+              onClick={() => setIsSidebarOpen(true)}
+              className="hidden lg:flex absolute top-4 right-4 z-20 items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#111827]/90 hover:bg-[#1f293d] border border-cyan-500/40 text-cyan-300 shadow-2xl backdrop-blur-md text-xs font-mono font-bold cursor-pointer transition-all tap-effect"
+              title="Show Leaderboard"
+            >
+              <Trophy className="w-3.5 h-3.5 text-amber-400" />
+              <span>Leaderboard</span>
+            </button>
+          )}
         </main>
 
         {/* 4. Desktop Widescreen Standings Sidebar (Visible on Laptop / Desktop screens lg+) */}
-        <aside className="hidden lg:flex flex-col w-72 xl:w-80 bg-[#0B0F19]/90 border-l border-gray-800/80 p-4 z-20 overflow-y-auto">
-          <div className="flex items-center justify-between pb-3 border-b border-gray-800 mb-3">
-            <div className="flex items-center gap-2">
-              <Trophy className="w-4 h-4 text-amber-400" />
-              <h3 className="font-display font-black text-sm text-white">Live Leaderboard</h3>
+        {isSidebarOpen && (
+          <aside className="hidden lg:flex flex-col w-72 xl:w-80 bg-[#0B0F19]/90 border-l border-gray-800/80 p-4 z-20 overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-800 mb-3">
+              <div className="flex items-center gap-2">
+                <Trophy className="w-4 h-4 text-amber-400" />
+                <h3 className="font-display font-black text-sm text-white">Live Leaderboard</h3>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 font-bold">
+                  {playersList.length} Players
+                </span>
+                <button
+                  onClick={() => setIsSidebarOpen(false)}
+                  className="p-1 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition-colors cursor-pointer"
+                  title="Collapse Leaderboard (Full Grid Space)"
+                  aria-label="Collapse Leaderboard"
+                >
+                  <PanelRightClose className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 font-bold">
-              {playersList.length} Players
-            </span>
-          </div>
 
           {/* Player Standings List */}
           <div className="space-y-2 flex-1">
@@ -641,8 +711,8 @@ export const GameScreen: React.FC<GameScreenProps> = ({
                 style={{ width: `${Math.round((claimedCount / totalNumbers) * 100)}%` }}
               />
             </div>
-          </div>
-        </aside>
+          </aside>
+        )}
       </div>
 
       {/* 5. Mobile Scores Sheet Modal */}

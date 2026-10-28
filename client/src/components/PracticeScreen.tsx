@@ -18,7 +18,7 @@ import { soundManager } from '../services/audio.js';
 import { soloStorage } from '../services/soloStorage.js';
 import { api } from '../services/api.js';
 import { playerStatsService } from '../services/playerStatsService.js';
-import { gridThemeService, GRID_MODELS, GridModelId } from '../services/gridTheme.js';
+import { gridThemeService, GRID_MODELS, GridModelId, getResponsiveGridCols } from '../services/gridTheme.js';
 import { backgroundThemeService, BACKGROUND_THEMES, BackgroundThemeId } from '../services/backgroundTheme.js';
 import { Tile } from './Tile.js';
 import type { SoloGameConfig } from './SoloSetupModal.js';
@@ -106,33 +106,35 @@ export const PracticeScreen: React.FC<PracticeScreenProps> = ({
   const lastTargetTimestampRef = useRef<number>(Date.now());
   const reactionTimesRef = useRef<number[]>([]);
 
-  // Columns & Sizing
-  const gridCols =
-    maxNumber <= 30 ? 5 :
-    maxNumber <= 50 ? 5 :
-    maxNumber <= 75 ? 6 :
-    maxNumber <= 100 ? 8 : 10;
+  // Columns & Sizing adapted for widescreen laptops vs portrait mobile
+  const [gridCols, setGridCols] = useState<number>(() => {
+    if (typeof window === 'undefined') return 10;
+    return getResponsiveGridCols(maxNumber, window.innerWidth, window.innerHeight - 80);
+  });
 
   const tileSize = maxNumber <= 50 ? 54 : maxNumber <= 100 ? 44 : 38;
 
   // Auto-fit helper
-  const calculateFitZoom = useCallback(() => {
-    if (!viewportRef.current) return 1;
-    const vw = viewportRef.current.clientWidth;
-    const vh = viewportRef.current.clientHeight;
+  const calculateFitZoom = useCallback(
+    (colsOverride?: number) => {
+      if (!viewportRef.current) return 1;
+      const vw = viewportRef.current.clientWidth;
+      const vh = viewportRef.current.clientHeight;
 
-    const gap = 8;
-    const totalCols = gridCols;
-    const totalRows = Math.ceil(maxNumber / totalCols);
+      const gap = 8;
+      const totalCols = colsOverride ?? gridCols;
+      const totalRows = Math.ceil(maxNumber / totalCols);
 
-    const boardW = totalCols * tileSize + (totalCols - 1) * gap + 32;
-    const boardH = totalRows * tileSize + (totalRows - 1) * gap + 32;
+      const boardW = totalCols * tileSize + (totalCols - 1) * gap + 32;
+      const boardH = totalRows * tileSize + (totalRows - 1) * gap + 32;
 
-    const scaleX = (vw - 20) / boardW;
-    const scaleY = (vh - 20) / boardH;
-    const idealZoom = Math.min(scaleX, scaleY, 1.15);
-    return Math.max(0.35, Math.round(idealZoom * 100) / 100);
-  }, [maxNumber, gridCols, tileSize]);
+      const scaleX = (vw - 32) / boardW;
+      const scaleY = (vh - 32) / boardH;
+      const idealZoom = Math.min(scaleX, scaleY, 2.2);
+      return Math.max(0.35, Math.round(idealZoom * 100) / 100);
+    },
+    [maxNumber, gridCols, tileSize]
+  );
 
   // Audio cues on countdown
   useEffect(() => {
@@ -220,16 +222,53 @@ export const PracticeScreen: React.FC<PracticeScreenProps> = ({
     startNewSoloGame();
   }, [config.resumeSaved, maxNumber, startNewSoloGame, calculateFitZoom]);
 
-  // Window resize auto-fit listener
+  // Window resize & container auto-fit listener
   useEffect(() => {
-    const handleResize = () => {
+    const updateLayout = () => {
+      if (!viewportRef.current) return;
+      const vw = viewportRef.current.clientWidth;
+      const vh = viewportRef.current.clientHeight;
+      if (vw <= 0 || vh <= 0) return;
+
+      const optimalCols = getResponsiveGridCols(maxNumber, vw, vh);
+
+      setGridCols((prevCols) => {
+        if (prevCols !== optimalCols) {
+          if (!isDraggingRef.current) {
+            const fitZoom = calculateFitZoom(optimalCols);
+            setZoom(fitZoom);
+            setPan({ x: 0, y: 0 });
+          }
+          return optimalCols;
+        }
+        return prevCols;
+      });
+
       if (!isDraggingRef.current) {
-        setZoom(calculateFitZoom());
+        const fitZoom = calculateFitZoom(optimalCols);
+        setZoom((curr) => {
+          return Math.abs(curr - fitZoom) < 0.25 ? fitZoom : curr;
+        });
       }
     };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [calculateFitZoom]);
+
+    updateLayout();
+
+    const ro = new ResizeObserver(() => {
+      updateLayout();
+    });
+
+    if (viewportRef.current) {
+      ro.observe(viewportRef.current);
+    }
+
+    window.addEventListener('resize', updateLayout);
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', updateLayout);
+    };
+  }, [maxNumber, tileSize, calculateFitZoom]);
 
   // Timer loop & auto-save
   useEffect(() => {
@@ -406,8 +445,9 @@ export const PracticeScreen: React.FC<PracticeScreenProps> = ({
         hasMovedRef.current = true;
         const vw = viewportRef.current?.clientWidth || 600;
         const vh = viewportRef.current?.clientHeight || 600;
+        const totalRows = Math.ceil(maxNumber / gridCols);
         const boardW = gridCols * tileSize + (gridCols - 1) * 8 + 32;
-        const boardH = Math.ceil(maxNumber / gridCols) * tileSize + 32;
+        const boardH = totalRows * tileSize + (totalRows - 1) * 8 + 32;
 
         const maxPanX = Math.max(120, Math.round((boardW * zoom - vw) / 2) + 120);
         const maxPanY = Math.max(120, Math.round((boardH * zoom - vh) / 2) + 120);

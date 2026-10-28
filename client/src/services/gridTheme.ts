@@ -122,3 +122,46 @@ export const gridThemeService = {
     }
   },
 };
+
+/**
+ * Calculates optimal columns for a number grid to fit the viewport aspect ratio.
+ * In mobile portrait, keeps compact columns (5-10) suited for vertical phone screens.
+ * In widescreen laptop/desktop, expands columns (8-20) to fill the screen landscape without looking like a phone.
+ */
+export function getResponsiveGridCols(totalNumbers: number, width: number, height: number): number {
+  const isPortrait = width < 640 || width < height;
+
+  if (isPortrait) {
+    if (totalNumbers <= 30) return 5;
+    if (totalNumbers <= 50) return 5;
+    if (totalNumbers <= 75) return 6;
+    if (totalNumbers <= 100) return 8;
+    if (totalNumbers <= 200) return 10;
+    return 12;
+  }
+
+  // Landscape / Widescreen (Laptop, Desktop, Tablet landscape)
+  const aspect = Math.max(1.1, Math.min(2.5, width / height));
+
+  // Balanced layouts for common counts to avoid awkward empty spaces:
+  if (totalNumbers <= 30) {
+    return aspect >= 1.5 ? 8 : 6;
+  }
+  if (totalNumbers <= 50) {
+    return aspect >= 1.4 ? 10 : 8;
+  }
+  if (totalNumbers <= 75) {
+    return aspect >= 1.5 ? 13 : 10;
+  }
+  if (totalNumbers <= 100) {
+    return aspect >= 1.5 ? 14 : 10;
+  }
+  if (totalNumbers <= 200) {
+    return aspect >= 1.4 ? 20 : 16;
+  }
+
+  // Arbitrary counts (e.g. 150, 300, 500)
+  const targetCols = Math.round(Math.sqrt(totalNumbers * aspect));
+  return Math.max(6, Math.min(targetCols, 26));
+}
+
