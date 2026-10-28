@@ -51,6 +51,8 @@ export interface Player {
   wrongClicks: number;
   joinedAt: number;
   lastActiveAt: number;
+  disconnectedAt?: number;
+  isReserved?: boolean;
 }
 
 export interface ClaimRecord {
@@ -123,6 +125,7 @@ export interface MatchResults {
 export interface RoomState {
   id: string;
   roomCode: string;
+  creatorId?: string;
   hostId: string;
   status: RoomStatus;
   settings: RoomSettings;

@@ -37,6 +37,7 @@ export interface Player {
   joinedAt: number;
   lastActiveAt: number;
   disconnectedAt?: number;
+  isReserved?: boolean; // Slot held when player chooses 'Rejoin Later' / temporary exit
 }
 
 export interface ClaimRecord {
@@ -109,6 +110,7 @@ export interface MatchResults {
 export interface RoomState {
   id: string;
   roomCode: string;
+  creatorId: string; // Permanent creator/original host ID
   hostId: string;
   status: RoomStatus;
   settings: RoomSettings;
