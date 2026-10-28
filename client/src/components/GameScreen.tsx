@@ -711,9 +711,10 @@ export const GameScreen: React.FC<GameScreenProps> = ({
                 style={{ width: `${Math.round((claimedCount / totalNumbers) * 100)}%` }}
               />
             </div>
-          </aside>
-        )}
-      </div>
+          </div>
+        </aside>
+      )}
+    </div>
 
       {/* 5. Mobile Scores Sheet Modal */}
       {isScoresOpen && (
