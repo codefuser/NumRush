@@ -129,7 +129,7 @@ export class RoomManager {
       password: payload.settings?.password || undefined,
       wrongClickPenalty: payload.settings?.wrongClickPenalty ?? 'NONE',
       allowSpectators: payload.settings?.allowSpectators ?? false,
-      allowLateJoin: payload.settings?.allowLateJoin ?? false,
+      allowLateJoin: payload.settings?.allowLateJoin ?? true,
       soundEnabled: true,
     };
 
@@ -152,6 +152,7 @@ export class RoomManager {
     const room: RoomState = {
       id: roomId,
       roomCode,
+      creatorId: playerId,
       hostId: playerId,
       status: 'WAITING',
       settings: defaultSettings,
@@ -199,18 +200,41 @@ export class RoomManager {
       const existingPlayer = room.players[payload.userId];
       existingPlayer.socketId = socketId;
       existingPlayer.isConnected = true;
+      existingPlayer.isReserved = false;
       existingPlayer.disconnectedAt = undefined;
       existingPlayer.lastActiveAt = Date.now();
+
+      // If returning player is the original creator, restore host role
+      if (room.creatorId === existingPlayer.id) {
+        const previousHostId = room.hostId;
+        room.hostId = existingPlayer.id;
+        existingPlayer.isHost = true;
+        for (const p of Object.values(room.players)) {
+          if (p.id !== existingPlayer.id) {
+            p.isHost = false;
+          }
+        }
+        if (previousHostId !== existingPlayer.id) {
+          this.broadcastToRoom(roomId, 'room:hostMigrated', {
+            previousHostId,
+            newHostId: existingPlayer.id,
+            newHostName: existingPlayer.displayName,
+          });
+        }
+      }
 
       this.socketToPlayerMap.set(socketId, { roomId, playerId: existingPlayer.id });
 
       return { success: true, room, player: existingPlayer };
     }
 
-    // Check room capacity
-    const currentActivePlayers = Object.values(room.players).filter((p) => p.isConnected || p.score > 0);
-    if (currentActivePlayers.length >= room.settings.playerLimit) {
-      return { success: false, error: 'Room is already full' };
+    // Check room capacity (connected + reserved + recently disconnected players)
+    const now = Date.now();
+    const occupiedPlayers = Object.values(room.players).filter(
+      (p) => p.isConnected || p.isReserved || (p.disconnectedAt && now - p.disconnectedAt < RECONNECTION_GRACE_PERIOD_MS)
+    );
+    if (occupiedPlayers.length >= room.settings.playerLimit) {
+      return { success: false, error: 'Room is already full (spots occupied or reserved)' };
     }
 
     // Check if match already in progress and late joining not permitted
@@ -294,8 +318,26 @@ export class RoomManager {
 
     player.socketId = socketId;
     player.isConnected = true;
+    player.isReserved = false;
     player.disconnectedAt = undefined;
     player.lastActiveAt = Date.now();
+
+    // If returning player is the original creator, restore host role
+    if (room.creatorId === player.id && room.hostId !== player.id) {
+      const previousHostId = room.hostId;
+      room.hostId = player.id;
+      player.isHost = true;
+      for (const p of Object.values(room.players)) {
+        if (p.id !== player.id) {
+          p.isHost = false;
+        }
+      }
+      this.broadcastToRoom(roomId, 'room:hostMigrated', {
+        previousHostId,
+        newHostId: player.id,
+        newHostName: player.displayName,
+      });
+    }
 
     if (room.currentMatch && !room.currentMatch.playerStats[playerId]) {
       room.currentMatch.playerStats[playerId] = {
@@ -783,9 +825,9 @@ export class RoomManager {
   }
 
   /**
-   * Removes a player explicitly leaving the room
+   * Removes a player explicitly leaving the room (supports permanent vs temporary hold)
    */
-  public leaveRoom(roomId: string, playerId: string): boolean {
+  public leaveRoom(roomId: string, playerId: string, permanent: boolean = false): boolean {
     const room = this.rooms.get(roomId);
     if (!room) return false;
 
@@ -794,36 +836,52 @@ export class RoomManager {
       this.socketToPlayerMap.delete(player.socketId);
     }
 
-    const isMatchActive = room.status === 'PLAYING' || room.status === 'COUNTDOWN';
+    if (permanent) {
+      delete room.players[playerId];
+      if (room.currentMatch && room.currentMatch.playerStats[playerId]) {
+        delete room.currentMatch.playerStats[playerId];
+      }
 
-    if (isMatchActive) {
-      // During an active match, mark player disconnected rather than deleting them,
-      // so they can rejoin and their score/stats are preserved
-      if (player) {
-        player.isConnected = false;
-        player.disconnectedAt = Date.now();
+      // If creator permanently leaves, transfer creator role to another player
+      if (room.creatorId === playerId) {
+        const remaining = Object.values(room.players);
+        if (remaining.length > 0) {
+          room.creatorId = remaining[0].id;
+        }
       }
     } else {
-      delete room.players[playerId];
+      // Temporary leave / hold my spot ("rejoin panuven")
+      if (player) {
+        player.isConnected = false;
+        player.isReserved = true;
+        player.disconnectedAt = Date.now();
+      }
     }
 
-    // If host left, migrate
+    // If host left, migrate host to next connected player
     if (room.hostId === playerId) {
-      const remaining = Object.values(room.players).filter((p) => p.isConnected);
+      const remaining = Object.values(room.players).filter((p) => p.isConnected && p.id !== playerId);
       if (remaining.length > 0) {
-        room.hostId = remaining[0].id;
-        remaining[0].isHost = true;
+        const nextHost = remaining[0];
+        room.hostId = nextHost.id;
+        nextHost.isHost = true;
+        if (player) player.isHost = false;
         this.broadcastToRoom(roomId, 'room:hostMigrated', {
           previousHostId: playerId,
-          newHostId: remaining[0].id,
-          newHostName: remaining[0].displayName,
+          newHostId: nextHost.id,
+          newHostName: nextHost.displayName,
         });
       }
     }
 
+    const connectedCount = Object.values(room.players).filter((p) => p.isConnected).length;
+    const reservedCount = Object.values(room.players).filter((p) => p.isReserved).length;
+
     this.broadcastToRoom(roomId, 'room:playerLeft', {
       playerId,
-      remainingCount: Object.values(room.players).filter((p) => p.isConnected).length,
+      permanent,
+      remainingCount: connectedCount,
+      reservedCount,
     });
 
     return true;

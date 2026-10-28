@@ -23,6 +23,7 @@ import { soundManager } from '../services/audio.js';
 import { socketService } from '../services/socket.js';
 import { gridThemeService, GridModelId, GRID_MODELS, getResponsiveGridCols } from '../services/gridTheme.js';
 import { backgroundThemeService, BackgroundThemeId, BACKGROUND_THEMES } from '../services/backgroundTheme.js';
+import { LeaveGameModal } from './LeaveGameModal.js';
 
 interface GameScreenProps {
   room: RoomState;
@@ -32,7 +33,7 @@ interface GameScreenProps {
   serverRemainingSeconds: number;
   serverElapsedSeconds?: number;
   onClaimNumber: (number: number) => void;
-  onLeaveRoom?: () => void;
+  onLeaveRoom?: (permanent: boolean) => void;
 }
 
 export const GameScreen: React.FC<GameScreenProps> = ({
@@ -48,6 +49,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   // Grid Theme and Canvas Background Theme states
   const [gridModelId, setGridModelId] = useState<GridModelId>(() => gridThemeService.getCurrentModelId());
   const [bgThemeId, setBgThemeId] = useState<BackgroundThemeId>(() => backgroundThemeService.getCurrentThemeId());
+  const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
 
   useEffect(() => {
     const handleThemeChange = (e: Event) => {
@@ -454,11 +456,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
         <div className="flex items-center gap-2 sm:gap-3">
           {onLeaveRoom && (
             <button
-              onClick={() => {
-                if (window.confirm('Are you sure you want to leave the active match?')) {
-                  onLeaveRoom();
-                }
-              }}
+              onClick={() => setIsLeaveModalOpen(true)}
               title="Exit Game"
               className="p-2 rounded-xl bg-gray-800/70 hover:bg-gray-700 text-gray-400 hover:text-white transition-all tap-effect cursor-pointer"
             >
@@ -835,6 +833,18 @@ export const GameScreen: React.FC<GameScreenProps> = ({
           </div>
         </div>
       )}
+
+      {/* Leave Game Modal */}
+      <LeaveGameModal
+        isOpen={isLeaveModalOpen}
+        onClose={() => setIsLeaveModalOpen(false)}
+        onConfirmLeave={(permanent) => {
+          setIsLeaveModalOpen(false);
+          onLeaveRoom?.(permanent);
+        }}
+        isMatchActive={true}
+        isHost={room.hostId === currentPlayerId || room.creatorId === currentPlayerId}
+      />
     </div>
   );
 };

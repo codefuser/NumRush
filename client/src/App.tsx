@@ -223,11 +223,19 @@ export const App: React.FC = () => {
     });
 
     // D. Player Left / Kicked
-    socket.on('room:playerLeft', (data: { playerId: string }) => {
+    socket.on('room:playerLeft', (data: { playerId: string; permanent?: boolean }) => {
       setRoom((prev) => {
         if (!prev) return prev;
         const updated = { ...prev.players };
-        delete updated[data.playerId];
+        if (data.permanent) {
+          delete updated[data.playerId];
+        } else if (updated[data.playerId]) {
+          updated[data.playerId] = {
+            ...updated[data.playerId],
+            isConnected: false,
+            isReserved: true,
+          };
+        }
         return { ...prev, players: updated };
       });
     });
@@ -542,12 +550,23 @@ export const App: React.FC = () => {
     socket.emit('room:start', { roomId: room.id });
   };
 
-  const handleLeaveRoom = () => {
+  const handleLeaveRoom = (permanent: boolean = false) => {
     if (room) {
       const socket = socketService.getSocket();
-      socket.emit('room:leave', { roomId: room.id });
+      socket.emit('room:leave', { roomId: room.id, permanent });
     }
-    socketService.clearActiveSession();
+    if (permanent) {
+      socketService.clearActiveSession();
+    } else if (room) {
+      // Ensure active session is kept so the user can click Resume on HomeScreen
+      socketService.saveActiveSession({
+        roomId: room.id,
+        roomCode: room.roomCode,
+        userId,
+        displayName,
+        timestamp: Date.now(),
+      });
+    }
     setRoom(null);
     setMatch(null);
     setResults(null);

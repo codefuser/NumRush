@@ -48,16 +48,33 @@ app.get('/health', (_req, res) => {
 });
 
 app.get('/api/rooms/active', (_req, res) => {
-  const rooms = roomManager.getActiveRooms().map((r) => ({
-    id: r.id,
-    roomCode: r.roomCode,
-    status: r.status,
-    playerCount: Object.keys(r.players).length,
-    playerLimit: r.settings.playerLimit,
-    numberRange: r.settings.numberRange,
-    gameMode: r.settings.gameMode,
-    createdAt: r.createdAt,
-  }));
+  const now = Date.now();
+  const rooms = roomManager.getActiveRooms().map((r) => {
+    const playersList = Object.values(r.players);
+    const connectedCount = playersList.filter((p) => p.isConnected).length;
+    const reservedCount = playersList.filter(
+      (p) => !p.isConnected && (p.isReserved || (p.disconnectedAt && now - p.disconnectedAt < 300000))
+    ).length;
+    const occupiedCount = connectedCount + reservedCount;
+    const playerLimit = r.settings.playerLimit;
+    const isFull = occupiedCount >= playerLimit;
+    const openSlots = Math.max(0, playerLimit - occupiedCount);
+
+    return {
+      id: r.id,
+      roomCode: r.roomCode,
+      status: r.status,
+      playerCount: occupiedCount,
+      connectedCount,
+      reservedCount,
+      playerLimit,
+      openSlots,
+      isFull,
+      numberRange: r.settings.numberRange,
+      gameMode: r.settings.gameMode,
+      createdAt: r.createdAt,
+    };
+  });
   res.json({ success: true, rooms });
 });
 

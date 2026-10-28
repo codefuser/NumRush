@@ -85,7 +85,18 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
     fetchStats();
 
-    const handleFocus = () => fetchStats();
+    const fetchRooms = () => {
+      api.getActiveRooms().then((res) => {
+        if (res && res.rooms) setPublicRooms(res.rooms);
+      });
+    };
+    fetchRooms();
+
+    const handleFocus = () => {
+      fetchStats();
+      fetchRooms();
+      setActiveSession(socketService.getActiveSession());
+    };
     const handleStatsUpdated = (e: Event) => {
       const custom = e as CustomEvent<PersistentPlayerStats>;
       if (custom.detail) setPlayerStats(custom.detail);
@@ -94,15 +105,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     window.addEventListener('focus', handleFocus);
     window.addEventListener('numrush:statsUpdated', handleStatsUpdated);
     const interval = setInterval(fetchStats, 6000);
-
-    api.getActiveRooms().then((res) => {
-      if (res && res.rooms) setPublicRooms(res.rooms);
-    });
+    const roomsInterval = setInterval(fetchRooms, 2500);
 
     return () => {
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('numrush:statsUpdated', handleStatsUpdated);
       clearInterval(interval);
+      clearInterval(roomsInterval);
     };
   }, [userId, displayName]);
 
@@ -402,33 +411,62 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </div>
         ) : (
           <div className="space-y-2">
-            {publicRooms.map((room) => (
-              <div
-                key={room.id}
-                className="p-3 rounded-2xl bg-[#11192d]/70 border border-gray-800 hover:border-cyan-500/40 flex items-center justify-between transition-colors"
-              >
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-display font-black text-sm text-cyan-300">
-                      {room.roomCode}
-                    </span>
-                    <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-400 border border-cyan-800">
-                      1–{room.numberRange.max}
-                    </span>
-                  </div>
-                  <div className="text-[11px] text-gray-400 font-mono mt-0.5">
-                    {room.playerCount} / {room.playerLimit} Players
-                  </div>
-                </div>
+            {publicRooms.map((room) => {
+              const isFull = room.isFull || (room.openSlots !== undefined && room.openSlots <= 0);
+              const openSlots = room.openSlots !== undefined ? room.openSlots : Math.max(0, room.playerLimit - room.playerCount);
+              const hasReserved = room.reservedCount && room.reservedCount > 0;
 
-                <button
-                  onClick={() => onOpenJoinModal(room.roomCode)}
-                  className="px-4 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-display font-bold tap-effect cursor-pointer"
+              return (
+                <div
+                  key={room.id}
+                  className="p-3 rounded-2xl bg-[#11192d]/70 border border-gray-800 hover:border-cyan-500/40 flex items-center justify-between transition-colors"
                 >
-                  Join Match
-                </button>
-              </div>
-            ))}
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-display font-black text-sm text-cyan-300">
+                        {room.roomCode}
+                      </span>
+                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-400 border border-cyan-800">
+                        1–{room.numberRange.max}
+                      </span>
+                      <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                        room.status === 'PLAYING' 
+                          ? 'bg-amber-950/70 text-amber-300 border border-amber-600/50' 
+                          : 'bg-emerald-950/70 text-emerald-300 border border-emerald-600/50'
+                      }`}>
+                        {room.status === 'PLAYING' ? 'IN MATCH' : 'WAITING'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-[11px] font-mono mt-1">
+                      <span className="text-gray-300 font-semibold">
+                        {room.playerCount} / {room.playerLimit} Players
+                      </span>
+                      {isFull ? (
+                        <span className="text-rose-400 font-bold bg-rose-950/50 px-1.5 py-0.5 rounded border border-rose-800/50 text-[10px]">
+                          {hasReserved ? 'Full (Spot Held)' : 'Full'}
+                        </span>
+                      ) : (
+                        <span className="text-emerald-400 font-bold bg-emerald-950/50 px-1.5 py-0.5 rounded border border-emerald-800/50 text-[10px]">
+                          {openSlots} Spot{openSlots > 1 ? 's' : ''} Open
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => onOpenJoinModal(room.roomCode)}
+                    disabled={isFull}
+                    className={`px-4 py-2 rounded-xl text-xs font-display font-bold transition-all ${
+                      isFull
+                        ? 'bg-gray-800/50 text-gray-500 border border-gray-700/50 cursor-not-allowed'
+                        : 'bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 hover:shadow-[0_0_15px_rgba(0,240,255,0.25)] tap-effect cursor-pointer'
+                    }`}
+                  >
+                    {isFull ? 'Room Full' : 'Join Match'}
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

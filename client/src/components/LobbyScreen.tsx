@@ -21,13 +21,14 @@ import {
 } from 'lucide-react';
 import type { RoomState, Player } from '../types/index.js';
 import { soundManager } from '../services/audio.js';
+import { LeaveGameModal } from './LeaveGameModal.js';
 
 interface LobbyScreenProps {
   room: RoomState;
   currentPlayerId: string;
   onSetReady: (isReady: boolean) => void;
   onStartGame: () => void;
-  onLeaveRoom: () => void;
+  onLeaveRoom: (permanent: boolean) => void;
   onKickPlayer?: (targetPlayerId: string) => void;
 }
 
@@ -50,6 +51,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [activeEmote, setActiveEmote] = useState<{ emoji: string; label: string } | null>(null);
+  const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
 
   const playersList: Player[] = Object.values(room.players);
   const currentPlayer = room.players[currentPlayerId];
@@ -232,7 +234,11 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                       </div>
                       <span
                         className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#0E1524] ${
-                          player.isConnected ? 'bg-emerald-400' : 'bg-rose-500'
+                          player.isConnected
+                            ? 'bg-emerald-400'
+                            : player.isReserved
+                            ? 'bg-amber-400 animate-pulse'
+                            : 'bg-rose-500'
                         }`}
                       />
                     </div>
@@ -254,7 +260,11 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                         )}
                       </div>
                       <span className="text-[11px] text-gray-400 font-mono block">
-                        {player.isConnected ? 'Ready for Hunt' : 'Reconnecting...'}
+                        {player.isConnected
+                          ? 'Ready for Hunt'
+                          : player.isReserved
+                          ? 'Spot Held (Rejoining...)'
+                          : 'Reconnecting...'}
                       </span>
                     </div>
                   </div>
@@ -330,7 +340,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
       {/* 4. Bottom Controls Action Bar */}
       <div className="rounded-3xl bg-[#0D1424] border border-gray-800 p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xl">
         <button
-          onClick={onLeaveRoom}
+          onClick={() => setIsLeaveModalOpen(true)}
           className="w-full sm:w-auto px-5 py-3 rounded-2xl bg-gray-900/80 hover:bg-gray-800 border border-gray-800 text-gray-300 hover:text-white text-xs font-display font-bold flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
         >
           <LogOut className="w-4 h-4 text-rose-400" />
@@ -379,6 +389,18 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
           )}
         </div>
       </div>
+
+      {/* Leave Game Modal */}
+      <LeaveGameModal
+        isOpen={isLeaveModalOpen}
+        onClose={() => setIsLeaveModalOpen(false)}
+        onConfirmLeave={(permanent) => {
+          setIsLeaveModalOpen(false);
+          onLeaveRoom(permanent);
+        }}
+        isMatchActive={false}
+        isHost={isHost}
+      />
     </div>
   );
 };

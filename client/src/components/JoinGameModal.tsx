@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { X, LogIn, AlertCircle, Key, User } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, LogIn, AlertCircle, Key, User, Radio, Users } from 'lucide-react';
+import { api } from '../services/api.js';
 
 interface JoinGameModalProps {
   initialCode?: string;
@@ -18,6 +19,18 @@ export const JoinGameModal: React.FC<JoinGameModalProps> = ({
 }) => {
   const [code, setCode] = useState<string>(initialCode);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [publicRooms, setPublicRooms] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchRooms = () => {
+      api.getActiveRooms().then((res) => {
+        if (res && res.rooms) setPublicRooms(res.rooms);
+      });
+    };
+    fetchRooms();
+    const interval = setInterval(fetchRooms, 3000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,7 +70,7 @@ export const JoinGameModal: React.FC<JoinGameModalProps> = ({
     >
       <div 
         onClick={(e) => e.stopPropagation()} 
-        className="relative w-full max-w-sm bg-[#0F172A] border border-cyan-500/40 rounded-3xl p-5 sm:p-6 shadow-[0_0_40px_rgba(0,240,255,0.2)] cursor-default"
+        className="relative w-full max-w-md bg-[#0F172A] border border-cyan-500/40 rounded-3xl p-5 sm:p-6 shadow-[0_0_40px_rgba(0,240,255,0.2)] cursor-default max-h-[90vh] overflow-y-auto"
       >
         {/* Close */}
         <button
@@ -74,7 +87,7 @@ export const JoinGameModal: React.FC<JoinGameModalProps> = ({
           </div>
           <div>
             <h2 className="font-display font-extrabold text-xl sm:text-2xl text-white">Join Room</h2>
-            <p className="text-xs text-gray-400">Enter room ID or paste invite code</p>
+            <p className="text-xs text-gray-400">Enter room ID or select a live public room</p>
           </div>
         </div>
 
@@ -109,6 +122,71 @@ export const JoinGameModal: React.FC<JoinGameModalProps> = ({
             {isLoading ? 'Entering Room...' : 'Enter Match Lobby'}
           </button>
         </form>
+
+        {/* Live Public Rooms Section */}
+        {publicRooms.length > 0 && (
+          <div className="mt-5 pt-4 border-t border-gray-800">
+            <div className="flex items-center justify-between mb-2.5">
+              <div className="flex items-center gap-1.5 text-xs font-display font-bold text-gray-300">
+                <Radio className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+                <span>Live Public Rooms</span>
+              </div>
+              <span className="text-[10px] font-mono text-gray-500">
+                {publicRooms.length} active
+              </span>
+            </div>
+
+            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+              {publicRooms.map((r) => {
+                const isFull = r.isFull || (r.openSlots !== undefined && r.openSlots <= 0);
+                const openSlots = r.openSlots !== undefined ? r.openSlots : Math.max(0, r.playerLimit - r.playerCount);
+
+                return (
+                  <div
+                    key={r.id}
+                    onClick={() => {
+                      if (!isFull) {
+                        setCode(r.roomCode);
+                        onJoin(r.roomCode);
+                      }
+                    }}
+                    className={`p-2.5 rounded-xl border flex items-center justify-between transition-all ${
+                      isFull
+                        ? 'bg-gray-900/40 border-gray-800/80 opacity-60 cursor-not-allowed'
+                        : 'bg-black/40 border-gray-800 hover:border-cyan-400/50 hover:bg-cyan-950/20 cursor-pointer active:scale-[0.98]'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-display font-black text-xs text-white">
+                          {r.roomCode}
+                        </span>
+                        <span className="text-[9px] font-mono px-1 rounded bg-cyan-950 text-cyan-300 border border-cyan-800/50">
+                          1–{r.numberRange?.max || 50}
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-gray-400 font-mono mt-0.5">
+                        {r.playerCount} / {r.playerLimit} Players
+                      </div>
+                    </div>
+
+                    <div>
+                      {isFull ? (
+                        <span className="text-[10px] font-mono font-bold text-rose-400 bg-rose-950/60 px-2 py-0.5 rounded border border-rose-800/40">
+                          Full
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/40">
+                          {openSlots} Open
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

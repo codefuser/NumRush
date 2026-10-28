@@ -313,13 +313,13 @@ export function setupSocketHandlers(io: Server, roomManager: RoomManager) {
     });
 
     // 9. Leave Room
-    socket.on('room:leave', (data: { roomId: string }) => {
+    socket.on('room:leave', (data: { roomId: string; permanent?: boolean }) => {
       const room = roomManager.getRoom(data.roomId);
       if (!room) return;
       const player = Object.values(room.players).find((p) => p.socketId === socket.id);
       if (!player) return;
 
-      roomManager.leaveRoom(room.id, player.id);
+      roomManager.leaveRoom(room.id, player.id, data.permanent ?? false);
       socket.leave(room.id);
     });
 

@@ -209,4 +209,82 @@ describe('Multiplayer & Concurrency Race Condition Integration Tests', () => {
     expect(claimRes.success).toBe(true);
     expect(room.currentMatch!.currentTarget).toBe(2);
   });
+
+  it('should restore Host status to original creator when they rejoin after disconnect', () => {
+    // 1. Host creates room
+    const { room, player: originalHost } = roomManager.createRoom('sock-host-1', {
+      displayName: 'CreatorHost',
+      userId: 'user-creator',
+      settings: { playerLimit: 2 },
+    });
+
+    expect(room.creatorId).toBe('user-creator');
+    expect(room.hostId).toBe('user-creator');
+    expect(originalHost.isHost).toBe(true);
+
+    // 2. Player 2 joins
+    const join2 = roomManager.joinRoom('sock-p2', {
+      roomCode: room.roomCode,
+      displayName: 'PlayerTwo',
+      userId: 'user-p2',
+    });
+    expect(join2.success).toBe(true);
+    const p2 = join2.player!;
+    expect(p2.isHost).toBe(false);
+
+    // 3. Host disconnects -> Host temporarily migrates to Player 2
+    roomManager.handleDisconnect('sock-host-1');
+    expect(room.hostId).toBe('user-p2');
+    expect(p2.isHost).toBe(true);
+
+    // 4. Original Creator Host returns / rejoins
+    const returnJoin = roomManager.joinRoom('sock-host-rejoin', {
+      roomCode: room.roomCode,
+      displayName: 'CreatorHost',
+      userId: 'user-creator',
+    });
+
+    expect(returnJoin.success).toBe(true);
+    // Host role MUST be restored to original creator!
+    expect(room.hostId).toBe('user-creator');
+    expect(returnJoin.player!.isHost).toBe(true);
+    expect(p2.isHost).toBe(false);
+  });
+
+  it('should reserve slot on temporary leave (rejoin later) and free slot on permanent leave', () => {
+    // Room with capacity of 3
+    const { room } = roomManager.createRoom('sock-h', {
+      displayName: 'Host',
+      userId: 'user-h',
+      settings: { playerLimit: 3 },
+    });
+
+    // P2 and P3 join (Room full: 3/3)
+    roomManager.joinRoom('sock-p2', { roomCode: room.roomCode, displayName: 'P2', userId: 'user-p2' });
+    roomManager.joinRoom('sock-p3', { roomCode: room.roomCode, displayName: 'P3', userId: 'user-p3' });
+
+    // P3 leaves with "Rejoin Later" (permanent: false)
+    roomManager.leaveRoom(room.id, 'user-p3', false);
+    expect(room.players['user-p3'].isReserved).toBe(true);
+    expect(room.players['user-p3'].isConnected).toBe(false);
+
+    // Outsider P4 tries to join -> REJECTED because P3's spot is reserved!
+    const join4 = roomManager.joinRoom('sock-p4', { roomCode: room.roomCode, displayName: 'P4', userId: 'user-p4' });
+    expect(join4.success).toBe(false);
+    expect(join4.error).toContain('full');
+
+    // P3 rejoins into their reserved spot
+    const p3Rejoin = roomManager.joinRoom('sock-p3-new', { roomCode: room.roomCode, displayName: 'P3', userId: 'user-p3' });
+    expect(p3Rejoin.success).toBe(true);
+    expect(p3Rejoin.player!.isReserved).toBe(false);
+
+    // Now P3 leaves PERMANENTLY (permanent: true)
+    roomManager.leaveRoom(room.id, 'user-p3', true);
+    expect(room.players['user-p3']).toBeUndefined();
+
+    // Now outsider P4 CAN join because the slot is freed!
+    const join4After = roomManager.joinRoom('sock-p4', { roomCode: room.roomCode, displayName: 'P4', userId: 'user-p4' });
+    expect(join4After.success).toBe(true);
+    expect(join4After.player!.id).toBe('user-p4');
+  });
 });
